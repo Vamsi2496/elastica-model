@@ -1,0 +1,38 @@
+## IF INITIAL SOLUTION IS IN A FILE, USE THE FOLLOWING LINE
+#dat='start_data'
+#parnames = {1:'Fx',2:'Fy',3:'x',4:'y',5:'A',6:'B',7:'MA',8:'MB',9:'PE'}
+
+
+## IMPORTANT CONSTANTS, CHECK ALL OF THESE CAREFULLY
+
+# Parameters, independent variables and cont. parameter array
+parnames = {1:'Fx',2:'Fy',3:'x',4:'y',5:'Asymmetric',6:'Symmetric',7:'MA',8:'MB',9:'PE'}
+unames = {1:'theta', 2:'thetaprime', 3:'x_s', 4:'y_s'}
+NPAR = 9, NDIM = 4, NBC = 8, NINT = 1
+ICP =  ['Fx','x','Fy','MA','MB','PE']
+# length(ICP) = NBC + NINT − NDIM + 1 (10.7.6, page 104 in DEMO)
+# Meshing (no. of elements = NTST x NCOL)
+NTST = 50, NCOL = 4
+
+# Termination and labeling criteria 
+NMX = 10000, NPR =  1000
+#UZSTOP = {'x':0.95}
+
+# Step size
+#DS = 0.005, DSMIN = 0.000005, DSMAX = 0.01
+DS = 0.005, DSMIN = 0.000001, DSMAX = 0.01
+
+
+# Tolerance criteria
+EPSL = 1e-06, EPSU = 1e-06, EPSS = 0.0001
+
+
+## DO NOT CHANGE THE FOLLOWING CONSTANTS
+
+IPS = 4, IRS = 0, ILP = 1
+IAD = 3, ISP = 2, ISW = 1, IPLT = 0, IADS = 1
+MXBF = 0, IID = 2, ITMX = 8, ITNW = 5, NWTN = 3, JAC = 0
+THL = {}, THU = {}
+
+
+
