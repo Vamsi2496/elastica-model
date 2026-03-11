@@ -21,6 +21,10 @@ __pycache__/
 *.dat
 *.idx
 *.out
+*.off
+*.ply
+*.xyz
+*.txt
 
 # Temporary files
 *.tmp
