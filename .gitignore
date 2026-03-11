@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Numpy / data
+*.npz
+*.npy
+*.h5
+
+# Logs
+*.log
+
+# Compiled Fortran
+*.o
+*.mod
+*.exe
+
+# Simulation outputs
+*.dat
+*.idx
+*.out
+
+# Temporary files
+*.tmp
+*.bak
+
+# OS files
+Thumbs.db
+.DS_Store
