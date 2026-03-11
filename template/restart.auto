@@ -1,0 +1,109 @@
+#import os,auto
+#os.chdir("C:\\Users\\sanch\\Desktop\\Restart solution")
+#auto.auto('restart.auto')
+import time
+import numpy as np
+import os
+output_file = 'target_point.npz'
+data = np.load(output_file)
+try:
+    inside_points = data['target_point']
+    phi1_inside = inside_points[0]
+    phi2_inside = inside_points[1]
+    d_inside    = inside_points[2] 
+finally:
+    data.close()
+def run_el2_and_save(phi1_target,phi2_target,d_target):
+    start=time.time()
+    ds=1e-6
+    dsmax=1e-2
+    nmax=1000
+    tol = 1e-3
+    Symm_target  = (phi2_target-phi1_target)/2
+    Asymm_target = (phi1_target+phi2_target)/2
+    # ----- helper: start/append one dataset name -----
+    def sv_or_ap(name):
+        # b.name exists -> append; else -> create it first time
+        if os.path.exists("b.%s" % name):
+            ap(name)   # append fort.7/8/9 to b.name/s.name/d.name
+        else:
+            sv(name)   # save fort.7/8/9 as b.name/s.name/d.name (fresh)
+    # (optional but recommended) delete old appended datasets before a new sweep
+    for fn in ['fort.9']:  # just diagnostics
+        if os.path.exists(fn):
+            os.remove(fn)
+    m1=run(s='initial',e='el3', c='el3', DSMAX=dsmax, NMX=1,IRS=1)
+    current_d     = m1('EP1')['x']  
+    current_Asymm = m1('EP1')['Asymmetric']  
+    current_Symm  = m1('EP1')['Symmetric']
+    #Determine DS sign based on which direction the target lies
+    if d_target >= current_d:
+        DS_sign = 1       # target is ahead, move forward
+    else:
+        DS_sign = -1      # target is behind, move backward
+    DS_d = DS_sign * ds   # ds is step size magnitude
+    if Asymm_target >= current_Asymm:
+        DS_sign = 1       # target is ahead, move forward
+    else:
+        DS_sign = -1      # target is behind, move backward
+    DS_asymm = DS_sign * ds   # ds is step size magnitude
+    if Symm_target >= current_Symm:
+        DS_sign = 1       # target is ahead, move forward
+    else:
+        DS_sign = -1      # target is behind, move backward
+    DS_symm = DS_sign * ds   # ds is step size magnitude    
+    symm_limit = abs(Symm_target)+1      #1 is added to take care of the condition where, initial guess is outside the bounds
+    asymm_limit = abs(Asymm_target)+1
+    check=0
+    if abs(current_d- d_target)<1e-4:
+        d_achieved = current_d
+        m2=m1
+        check+=1
+    else:
+        m2=run(m1(), UZSTOP={'x':d_target}, RL0=0.59, RL1=1, ICP=['x','Fx','Fy','MA','MB','PE'], DS=DS_d, DSMAX=dsmax, NMX=nmax,STOP='LP1')
+        d_achieved = m2[-1][-1]['x']
+        if abs(m2[-1][-1]['x'] - d_target) > tol:
+            m2=run(m1(), UZSTOP={'x':d_target}, RL0=0.59, RL1=1, ICP=['x','Fx','Fy','MA','MB','PE'], DS=-DS_d, DSMAX=dsmax, NMX=nmax,STOP='LP1')
+            d_achieved = m2[-1][-1]['x']
+    if abs(current_Symm- Symm_target)<1e-4:
+        Symm_achieved = current_Symm
+        m3=m2
+        check+=1
+    else:
+        m3 = run(m2(), UZSTOP={'Symmetric': Symm_target}, RL0=-symm_limit, RL1=symm_limit, ICP=['Symmetric','Fx','Fy','MA','MB','PE'], DS=DS_symm,DSMAX=dsmax,NMX=nmax,STOP='LP1')
+        Symm_achieved = m3[-1][-1]['Symmetric']
+        if abs(m3[-1][-1]['Symmetric'] - Symm_target) > tol:
+            m3 = run(m2(), UZSTOP={'Symmetric': Symm_target}, RL0=-symm_limit, RL1=symm_limit, ICP=['Symmetric','Fx','Fy','MA','MB','PE'], DS=-DS_symm,DSMAX=dsmax,NMX=nmax,STOP='LP1')
+            Symm_achieved = m3[-1][-1]['Symmetric']
+    if abs(current_Asymm- Asymm_target)<1e-4:
+        Asymm_achieved = current_Asymm
+        m4=m3
+        check+=1
+    else:
+        m4 = run(m3(), UZSTOP={'Asymmetric': Asymm_target}, RL0=-asymm_limit, RL1=asymm_limit, ICP=['Asymmetric','Fx','Fy','MA','MB','PE'], DS=DS_asymm,DSMAX=dsmax,NMX=nmax,STOP='LP1')
+        Asymm_achieved = m4[-1][-1]['Asymmetric']
+        if abs(m4[-1][-1]['Asymmetric'] - Asymm_target) > tol:
+            m4 = run(m3(), UZSTOP={'Asymmetric': Asymm_target}, RL0=-asymm_limit, RL1=asymm_limit, ICP=['Asymmetric','Fx','Fy','MA','MB','PE'], DS=-DS_asymm,DSMAX=dsmax,NMX=nmax,STOP='LP1')
+            Asymm_achieved = m4[-1][-1]['Asymmetric']
+    converged = abs(d_achieved - d_target)<tol and abs(Symm_achieved - Symm_target) < tol and abs(Asymm_achieved - Asymm_target) < tol    and check<3
+    if converged :
+        sv_or_ap('data6')
+        sv('curr_data')
+    print "d_target =", d_target
+    print "Symm_target =", Symm_target
+    print "Asymm_target =", Asymm_target
+    print "d_convergence=", abs(d_achieved - d_target)
+    print "symm_convergence=", abs(Symm_achieved - Symm_target)
+    print "asymm_convergence=", abs(Asymm_achieved - Asymm_target)
+    end = time.time()-start
+    print "Total time(s)=", end
+    print "initial_symmetric =", current_Symm
+    print "initial_Asymmetric =", current_Asymm
+    print "initial_d =", current_d
+    return converged, m2
+import json
+converged, m2 = run_el2_and_save(phi1_inside, phi2_inside, d_inside)
+sentinel_path = "auto_status.json"
+with open(sentinel_path, "w") as f:
+    json.dump({"converged": bool(converged)}, f)
+print "Sentinel written: converged =", converged
