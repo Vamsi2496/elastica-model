@@ -1,0 +1,116 @@
+#import os,auto
+#os.chdir("C:\\Users\\sanch\\Desktop\\Elastica model")
+#auto.auto('initial_data_generation.auto')
+import time
+import numpy as np
+import os
+def run_el3_and_save(uz_x=0.9995,ds=-0.0001,
+                     icp=('Asymmetric','Fx','Fy','MA','MB','PE')):
+    # ----- helper: start/append one dataset name -----
+    def sv_or_ap(name):
+        # b.name exists -> append; else -> create it first time
+        if os.path.exists("b.%s" % name):
+            ap(name)   # append fort.7/8/9 to b.name/s.name/d.name
+        else:
+            sv(name)   # save fort.7/8/9 as b.name/s.name/d.name (fresh)
+    # (optional but recommended) delete old appended datasets before a new sweep
+    for fn in ['fort.9']:  # just diagnostics
+        if os.path.exists(fn):
+            os.remove(fn)
+    # finding maximum snapping angle
+    m1 = run('el3', STOP='BP1')
+    time.sleep(3)
+    m2 = run(m1('BP1'), ISW=-1, UZSTOP={'x': uz_x},NPR=10000)
+    sv_or_ap("upper")
+    time.sleep(3)
+    m3 = run(m2('UZ1'), STOP='LP1', ICP=['Symmetric','Fx','Fy','MA','MB','PE'], DS=0.0001,NMX=15000,NPR=15000)
+    try:
+        m3('LP1')   # check if LP1 exists
+    except KeyError:
+        m3 = run(m2('UZ1'), STOP='LP1', ICP=['Symmetric','Fx','Fy','MA','MB','PE'], DS=-0.0001,NMX=15000,NPR=15000)
+    Amax = abs(m3('LP1')['Symmetric'])
+    NMAX=m3('LP1')['PT']
+    print "NMAX =", NMAX    
+    print "Amax =", Amax
+    time.sleep(5)
+    bvals  = np.arange(0.5, Amax + 1e-12, 0.5).tolist()  # Positive Symmetric axis interval
+    if len(bvals) == 0 or abs(bvals[-1] - Amax) > 1e-9:
+        bvals.append(Amax)
+    bvals1  = np.arange(-0.5, -1.0*Amax - 1e-12, -0.5).tolist()  # Negative Symmetric axis interval
+    #if len(bvals1 == 0 or abs(bvals1[-1]+ Amax) > 1e-9:
+    bvals1.append(-1*Amax)
+    m5= run(m2('UZ1'),UZSTOP={'Symmetric': bvals[-1]}, STOP='LP1', RL1=Amax+1, RL0=-Amax-1, ICP=['Symmetric','Fx','Fy','MA','MB','PE'], DS=0.0000001, UZR={'Symmetric':bvals[0:-1]},NPR=15000,NMX=15000)
+    try:
+        m5('LP1')   # check if LP1 exists
+    except KeyError:
+        m5= run(m2('UZ1'),UZSTOP={'Symmetric': bvals[-1]}, STOP='LP1', RL1=Amax+1, RL0=-Amax-1, ICP=['Symmetric','Fx','Fy','MA','MB','PE'], DS=-0.0000001, UZR={'Symmetric':bvals[0:-1]},NPR=15000,NMX=15000)
+    sv_or_ap("upper")
+    labels = m5[-1].getLabels()
+    time.sleep(10)
+    try:
+        m5('BP1')   # check if LP1 exists
+        BP_label = m5('BP1')['LAB']
+        labels_to_use = [lab for lab in labels if lab < BP_label]
+    except KeyError:
+        labels_to_use = labels[0:-3]
+    for label_num in labels_to_use:
+        sol = m5(label_num)
+        Bkey = round(sol['Symmetric'], 1)
+        try:
+            su= run(sol, STOP='LP1', UZSTOP={'Asymmetric':Amax}, RL1=Amax, RL0=-Amax, ICP=['Asymmetric','Fx','Fy','MA','MB','PE'], DS=0.00001, NPR=50)
+            sv_or_ap("upper")
+            print "Bkey =", Bkey
+            time.sleep(3)
+        except Exception, e:
+            print "upper failed for Bkey=%s: %s" % (Bkey, e)
+            continue
+        try:
+            tu= run(sol, STOP='LP1', UZSTOP={'Asymmetric': -Amax}, RL1=Amax, RL0=-Amax, ICP=['Asymmetric','Fx','Fy','MA','MB','PE'], DS=-0.00001, NPR=50)
+            sv_or_ap("lower")	
+            time.sleep(3)
+        except Exception, e:
+            print "lower failed for Bkey=%s: %s" % (Bkey, e)
+            continue
+    time.sleep(10)
+    m4 = run(m2('UZ1'),UZSTOP={'Symmetric': bvals1[-1]}, STOP='LP1', RL1=Amax, RL0=-Amax, ICP=['Symmetric','Fx','Fy','MA','MB','PE'], DS=-0.0000001, UZR={'Symmetric':bvals1[0:-1]}, NPR=15000,NMX=15000)
+    if abs(m4[-1][-1]['Symmetric']+Amax)>1e0:
+        m4 = run(m2('UZ1'),UZSTOP={'Symmetric': bvals1[-1]}, STOP='LP1', RL1=Amax, RL0=-Amax, ICP=['Symmetric','Fx','Fy','MA','MB','PE'], DS=0.0000001, UZR={'Symmetric':bvals1[0:-1]}, NPR=15000,NMX=15000)
+    sv_or_ap("upper")
+    labels1= m4[-1].getLabels()
+    time.sleep(10)
+    for label_num in labels1:
+        sol = m4(label_num)
+        Bkey = round(sol['Symmetric'], 1)
+        sym0 = sol['Symmetric']           # Symmetric at this restart point
+        target_up = Amax + sym0 
+        target_low = -Amax - sym0
+        # --- upper (DS positive): stop at Asym = Amax + Symmetric(start) ---
+        try:
+            s = run(sol, UZSTOP={'Asymmetric': target_up}, RL0=target_low, ICP=['Asymmetric','Fx','Fy','MA','MB','PE'], DS=0.00001, NPR=50)
+	    sv_or_ap("upper")
+            print "Bkey =", Bkey
+            time.sleep(3)
+        except Exception, e:
+            print "upper failed for Bkey=%s: %s" % (Bkey, e)
+            continue
+        # --- lower (DS negative): stop at Asym = -Amax + Symmetric(start) ---
+        try:
+            t = run(sol, UZSTOP={'Asymmetric': target_low}, RL1=target_up, ICP=['Asymmetric','Fx','Fy','MA','MB','PE'], DS=-0.00001, NPR=50)
+ 	    sv_or_ap("lower")
+            time.sleep(3)
+        except Exception, e:
+            print "lower failed for Bkey=%s: %s" % (Bkey, e)
+            continue
+    time.sleep(10)
+    sa = run(m2('UZ1'), STOP=['LP1','BP1'], UZSTOP={'Asymmetric': Amax}, RL1=Amax, RL0=-Amax, ICP=['Asymmetric','Fx','Fy','MA','MB','PE'], DS=0.00001,  NPR=50)
+    sv_or_ap("upper")
+    time.sleep(3)
+    ta = run(m2('UZ1'), STOP=['LP1','BP1'], UZSTOP={'Asymmetric': -Amax}, RL1=Amax, RL0=-Amax, ICP=['Asymmetric','Fx','Fy','MA','MB','PE'], DS=-0.00001, NPR=50)
+    sv_or_ap("lower")
+    time.sleep(3)
+    print "Amax =", Amax
+    print "NMAX =", NMAX    
+    return m1, m2, m3, m4, m5
+    #return m1, m2, m3, m4, m5, runs_by_Bupper, runs_by_Blower
+m1, m2, m3, m4, m5 = run_el3_and_save()
+#m1, m2, m3, m4, m5, runs_by_Bupper, runs_by_Blower = run_el3_and_save()
