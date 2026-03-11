@@ -20,13 +20,16 @@ import numpy as np
 import trimesh
 import h5py
 from rtree import index as rtree_index
+import psutil
 
 
 # ===============================================================================
 #  CONFIG
 # ===============================================================================
-N_POINTS      = 160000
-N_WORKERS     = 6
+N_POINTS      = 1000
+#N_WORKERS     = 6
+N_WORKERS = psutil.cpu_count(logical=False)-2   # physical cores only, e.g. 6
+print(f"Physical cores detected: {N_WORKERS}")
 
 EQ_DIR_BASE   = r"C:\Users\sanch\Desktop\Restart solution"
 MESH_FILE     = "final_mesh.off"
@@ -403,10 +406,15 @@ def _worker(worker_id, iteration_id, mesh_copy, idx):
     # Step 2 — run AUTO (subprocess releases GIL entirely)
     env = os.environ.copy()
     env['AUTO_EQ_DIR'] = wdir
-    ret = subprocess.call(
+    proc = subprocess.Popen(
         [BRIDGE_EXE, os.path.join(EQ_DIR_BASE, BRIDGE_SCRIPT)],
         env=env, cwd=wdir
     )
+    try:
+        psutil.Process(proc.pid).cpu_affinity([worker_id])  # worker_id = 0,1,2,...
+    except (psutil.NoSuchProcess, PermissionError):
+        pass   # process finished instantly or affinity not permitted — harmless
+    ret = proc.wait()
     if ret != 0:
         return _fail(f"bridge.py exited {ret}")
 
