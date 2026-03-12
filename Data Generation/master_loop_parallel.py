@@ -337,16 +337,30 @@ def _batch_flush(all_blocks):
                 f['t'][:] = t_a;  f['u1'][:] = u1_a
             start_idx = 0
         print(f"  HDF5: +{n} blocks (total {start_idx + n})")
-
-    # ── R-tree: open fresh handle, insert, close ───────────────────────────────
-    # No lock needed here — idx was closed in main() before this call
+    # ── R-tree: open fresh handle, insert, close — with crash recovery ─────────
     p = rtree_index.Property()
     p.dimension = 3
-    flush_idx = rtree_index.Index(RTREE_BASE, properties=p)
-    for i, (dv, p1, p2) in enumerate(zip(d, phi1, phi2), start=start_idx):
-        flush_idx.insert(i, (dv, p1, p2, dv, p1, p2), obj=i)
-    flush_idx.close()
-    print(f"  R-tree: +{n} entries inserted, index closed")
+    flush_idx = None
+    try:
+        flush_idx = rtree_index.Index(RTREE_BASE, properties=p)
+        for i, (dv, p1, p2) in enumerate(zip(d, phi1, phi2), start=start_idx):
+            flush_idx.insert(i, (dv, p1, p2, dv, p1, p2), obj=i)
+        flush_idx.close()
+        print(f"  R-tree: +{n} entries inserted, index closed")
+
+    except OSError as e:
+        print(f"  [WARN] R-tree RAM corruption: {e}")
+        print(f"  [WARN] Disk files are intact — reopening with fresh memory...")
+        try:
+            flush_idx.close()
+        except Exception:
+            pass
+        # Disk .dat/.idx are uncorrupted — fresh handle clears the bad RAM state
+        flush_idx = rtree_index.Index(RTREE_BASE, properties=p)
+        for i, (dv, p1, p2) in enumerate(zip(d, phi1, phi2), start=start_idx):
+            flush_idx.insert(i, (dv, p1, p2, dv, p1, p2), obj=i)
+        flush_idx.close()
+        print(f"  R-tree: +{n} entries inserted after recovery")
 
 
 # ===============================================================================
