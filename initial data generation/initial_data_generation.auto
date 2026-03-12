@@ -1,12 +1,19 @@
 # initial_data_generation.auto
 #import os,auto
-#os.chdir("C:\\Users\\sanch\\Desktop\\Elastica model")
+#os.chdir("C:\\Users\\sanch\\Desktop\\Elastica model\\initial data generation")
 #auto.auto('initial_data_generation.auto')
 
 import time
 import numpy as np
 import os
 import shutil
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Outer loop: uz_x = 0.60, 0.61, …, 0.99
+# Directory naming: uz_x=0.60 → d0p6000,  uz_x=0.75 → d0p7500,  0.99 → d0p9900
+# ═══════════════════════════════════════════════════════════════════════════
+uz_x_list = [round(v, 4) for v in np.arange(0.60, 1.00, 0.01)]                                       #user may update this section
+
 
 BASE_DIR = os.path.abspath(os.getcwd())
 
@@ -176,18 +183,14 @@ def run_el3_and_save(uz_x=0.9995, ds=-0.0001,
     return m1, m2, m3, m4, m5
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Outer loop: uz_x = 0.60, 0.61, …, 0.99
-# Directory naming: uz_x=0.60 → d0p6000,  uz_x=0.75 → d0p7500,  0.99 → d0p9900
-# ═══════════════════════════════════════════════════════════════════════════
-uz_x_list = [round(v, 4) for v in np.arange(0.99, 1.00, 0.009)]
+
 
 for uz_x_val in uz_x_list:
     suffix   = int(round(uz_x_val * 10000))        # 0.60→6000, 0.99→9900
     dir_name = "d0p%d" % suffix                     # d0p6000 … d0p9900
     dir_path = os.path.join(BASE_DIR, dir_name)
 
-    print "\n===== uz_x = %.2f  →  %s =====" % (uz_x_val, dir_name)
+    print "\n===== uz_x = %.4f  →  %s =====" % (uz_x_val, dir_name)
 
     # ── wipe previous upper/lower files so sv_or_ap starts fresh ─────────
     for prefix in ['b', 's', 'd']:
@@ -208,11 +211,17 @@ for uz_x_val in uz_x_list:
             for name in ['upper', 'lower']:
                 src = os.path.join(BASE_DIR, "%s.%s" % (prefix, name))
                 if os.path.exists(src):
-                    shutil.copy2(src, os.path.join(dir_path, "%s.%s" % (prefix, name))
-                    #copied.append("%s.%s" % (prefix, name))
+                    shutil.copy2(src, os.path.join(dir_path, "%s.%s" % (prefix, name)))
+                    copied.append("%s.%s" % (prefix, name))
 
         print "Saved to %s: %s" % (dir_name, ", ".join(copied) if copied else "NOTHING FOUND")
 
     except Exception, e:
         print "SKIPPED uz_x=%.2f — %s" % (uz_x_val, e)
         continue
+# ── wipe trace upper/lower files so sv_or_ap starts fresh ─────────
+for prefix in ['b', 's', 'd']:
+    for name in ['upper', 'lower']:
+        fn = os.path.join(BASE_DIR, "%s.%s" % (prefix, name))
+        if os.path.exists(fn):
+            os.remove(fn)
