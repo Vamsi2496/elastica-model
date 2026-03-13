@@ -25,7 +25,7 @@ from rtree import index as rtree_index
 # ===============================================================================
 #  CONFIG
 # ===============================================================================
-N_POINTS      = 160000
+N_POINTS      = 240000
 N_WORKERS     = 6
 
 EQ_DIR_BASE   = r"C:\Users\sanch\Desktop\Restart solution"
@@ -51,7 +51,7 @@ WORKER_DIRS = [os.path.join(EQ_DIR_BASE, f"worker_{i}") for i in range(N_WORKERS
 hdf5_lock  = threading.Lock()   # HDF5 C library has global state
 rtree_lock = threading.Lock()   # libspatialindex is not thread-safe
 log_lock   = threading.Lock()
-
+skipped_count = 0
 
 # ===============================================================================
 #  SETUP
@@ -353,14 +353,16 @@ def _batch_flush(all_blocks):
         print(f"  [WARN] Disk files are intact — reopening with fresh memory...")
         try:
             flush_idx.close()
+            # Disk .dat/.idx are uncorrupted — fresh handle clears the bad RAM state
+            flush_idx = rtree_index.Index(RTREE_BASE, properties=p)
+            for i, (dv, p1, p2) in enumerate(zip(d, phi1, phi2), start=start_idx):
+                flush_idx.insert(i, (dv, p1, p2, dv, p1, p2), obj=i)
+            flush_idx.close()
+            print(f"  R-tree: +{n} entries inserted after recovery")
         except Exception:
+            skipped_count += 1
             pass
-        # Disk .dat/.idx are uncorrupted — fresh handle clears the bad RAM state
-        flush_idx = rtree_index.Index(RTREE_BASE, properties=p)
-        for i, (dv, p1, p2) in enumerate(zip(d, phi1, phi2), start=start_idx):
-            flush_idx.insert(i, (dv, p1, p2, dv, p1, p2), obj=i)
-        flush_idx.close()
-        print(f"  R-tree: +{n} entries inserted after recovery")
+
 
 
 # ===============================================================================
@@ -550,6 +552,7 @@ def main():
                f"  Total     : {N_POINTS}\n"
                f"  Converged : {converged_total}\n"
                f"  Failed    : {failed_total}\n"
+               f"  data generated, but not indexed    : {skipped_count*N_WORKERS}\n"
                f"  Total time: {elapsed:.1f}s\n"
                f"  Avg/iter  : {elapsed/N_POINTS:.2f}s  "
                f"(effective {elapsed/(N_POINTS/N_WORKERS):.2f}s/batch)")
