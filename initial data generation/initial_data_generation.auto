@@ -8,12 +8,10 @@ import numpy as np
 import os
 import shutil
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Outer loop: uz_x = 0.60, 0.61, …, 0.99
-# Directory naming: uz_x=0.60 → d0p6000,  uz_x=0.75 → d0p7500,  0.99 → d0p9900
-# ═══════════════════════════════════════════════════════════════════════════
-uz_x_list = [round(v, 4) for v in np.arange(0.60, 1.00, 0.01)]                                       #user may update this section
 
+#uz_x_list = [round(v, 4) for v in np.arange(0.60, 1.00, 0.01)]                                       #user may update this section
+#uz_x_list = np.load("uz_x_list.npz")
+uz_x_list = np.load("uz_x_list.npz")["uz_x_list"].tolist()
 
 BASE_DIR = os.path.abspath(os.getcwd())
 
@@ -40,9 +38,7 @@ def run_el3_and_save(uz_x=0.9995, ds=-0.0001,
     time.sleep(3)
 
     # ── step 3: find Amax (LP1 on Symmetric branch) ───────────────────────
-    m3 = run(m2('UZ1'), STOP='LP1',
-             ICP=['Symmetric','Fx','Fy','MA','MB','PE'],
-             DS=0.0001, NMX=15000, NPR=15000)
+    m3 = run(m2('UZ1'), STOP='LP1',ICP=['Symmetric','Fx','Fy','MA','MB','PE'],DS=0.0001, NMX=15000, NPR=15000)
     try:
         m3('LP1')
     except KeyError:
@@ -219,9 +215,14 @@ for uz_x_val in uz_x_list:
     except Exception, e:
         print "SKIPPED uz_x=%.2f — %s" % (uz_x_val, e)
         continue
-# ── wipe trace upper/lower files so sv_or_ap starts fresh ─────────
+# ── wipe trace upper/lower files ──
 for prefix in ['b', 's', 'd']:
     for name in ['upper', 'lower']:
+        fn = os.path.join(BASE_DIR, "%s.%s" % (prefix, name))
+        if os.path.exists(fn):
+            os.remove(fn)
+for prefix in ['fort']:
+    for name in ['2', '3','7','8','9']:
         fn = os.path.join(BASE_DIR, "%s.%s" % (prefix, name))
         if os.path.exists(fn):
             os.remove(fn)

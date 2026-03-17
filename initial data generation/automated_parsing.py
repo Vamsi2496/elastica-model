@@ -333,10 +333,10 @@ def main():
     PHI_THRESHOLD = None
     
     # Find all folders matching pattern x0p*
-    folders = sorted(glob.glob("x0p*"))
+    folders = sorted(glob.glob("d0p*"))
     
     if len(folders) == 0:
-        print("ERROR: No folders matching 'x0p*' pattern found!")
+        print("ERROR: No folders matching 'd0p*' pattern found!")
         print("Current directory:", os.getcwd())
         return
     
