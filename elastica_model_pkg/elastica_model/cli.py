@@ -9,9 +9,9 @@ def main():
     print("\n=== Elastica Model — Data Generation ===\n")
     show_config()
 
-    uz_x_start = float(input("uz_x start (e.g. 0.60): "))
-    uz_x_end   = float(input("uz_x end   (e.g. 0.99): "))
-    uz_x_step  = float(input("uz_x step  (e.g. 0.01): "))
+    uz_x_start = float(input("uz_x start  (e.g. 0.60): "))
+    uz_x_end   = float(input("uz_x end    (e.g. 0.99): "))
+    n_layers   = int(input("Number of layers (e.g. 40): "))
     n_workers  = int(input("Number of parallel workers (default 4): ") or 4)
 
     hdf5_file    = input("HDF5 output file     [auto_data.h5]: ").strip() \
@@ -21,7 +21,7 @@ def main():
 
     # ── Run AUTO generation ───────────────────────────────────
     succeeded, failed, created_folders = run_generation(
-        uz_x_start, uz_x_end, uz_x_step,
+        uz_x_start, uz_x_end, n_layers,
         n_workers=n_workers
     )
 
@@ -37,11 +37,12 @@ def main():
     )
 
     print(f"\n{'='*50}")
-    print(f"  uz_x range : {uz_x_start} → {uz_x_end}  step={uz_x_step}")
-    print(f"  Succeeded  : {len(succeeded)}")
-    print(f"  Failed     : {len(failed)}")
+    print(f"  uz_x range  : {uz_x_start} → {uz_x_end}")
+    print(f"  Layers      : {n_layers}")
+    print(f"  Succeeded   : {len(succeeded)}")
+    print(f"  Failed      : {len(failed)}")
     print(f"  Blocks saved: {total}")
-    print(f"  HDF5       : {os.path.abspath(hdf5_file)}")
+    print(f"  HDF5        : {os.path.abspath(hdf5_file)}")
     print(f"{'='*50}\n")
 
 

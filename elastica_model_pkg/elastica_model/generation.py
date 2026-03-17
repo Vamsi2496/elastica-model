@@ -129,7 +129,7 @@ def _run_one(base_dir, worker_id, uz_x_val, bridge_code, created_dirs):
     return True, uz_x_val
 
 
-def run_generation(uz_x_start, uz_x_end, uz_x_step,
+def run_generation(uz_x_start, uz_x_end, n_layers,
                    n_workers=4, base_dir=None):
     """
     Run parallel AUTO continuation sweep over a uz_x range.
@@ -138,26 +138,28 @@ def run_generation(uz_x_start, uz_x_end, uz_x_step,
     ----------
     uz_x_start : float   e.g. 0.60
     uz_x_end   : float   e.g. 0.99
-    uz_x_step  : float   e.g. 0.01
+    n_layers   : int     number of evenly spaced uz_x values (inclusive)
     n_workers  : int     parallel AUTO processes (default 4)
     base_dir   : str     working directory (default: cwd)
 
     Returns
     -------
-    succeeded       : list[float]  uz_x values completed successfully
-    failed          : list[float]  uz_x values that failed
-    created_folders : list[str]    absolute paths of d0p* folders created
+    succeeded       : list[float]
+    failed          : list[float]
+    created_folders : list[str]
     """
     base_dir = base_dir or os.path.abspath(os.getcwd())
 
     # Copy bundled data files to working dir if missing
     _copy_data_files_to(base_dir)
 
-    uz_x_list = [round(v, 4) for v in
-                 np.arange(uz_x_start, uz_x_end + uz_x_step / 2, uz_x_step)]
+    # ── Evenly spaced using linspace ─────────────────────────
+    uz_x_list = [round(v, 10) for v in
+                 np.linspace(uz_x_start, uz_x_end, n_layers)]
 
-    _log(f"\n{len(uz_x_list)} iterations: {uz_x_list}")
-    _log(f"N_WORKERS = {n_workers}\n")
+    _log(f"\n{n_layers} layers: {uz_x_list[0]} → {uz_x_list[-1]}")
+    _log(f"uz_x values : {uz_x_list}")
+    _log(f"N_WORKERS   : {n_workers}\n")
 
     # Save full list for reference
     np.savez(os.path.join(base_dir, "uz_x_list.npz"),
