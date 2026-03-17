@@ -1,0 +1,196 @@
+import importlib.resources
+import numpy as np
+import os
+import shutil
+import subprocess
+import concurrent.futures
+import threading
+
+from .config import PYTHON26, AUTO_DIR
+
+TEMPLATE_FILES = ["el3.f90", "c.el3", "initial_data_generation.auto"]
+FOLDERS_FILE   = "folders_this_run.txt"
+
+log_lock     = threading.Lock()
+created_lock = threading.Lock()
+
+
+def _log(msg):
+    with log_lock:
+        print(msg)
+
+
+def _folder_name(uz_x):
+    return "d0p%d" % int(round(uz_x * 10000))
+
+
+def _copy_data_files_to(base_dir):
+    """
+    Copy bundled el3.f90, c.el3, initial_data_generation.auto
+    from elastica_model/data/ into base_dir if not already present.
+    """
+    data_path = importlib.resources.files("elastica_model") / "data"
+    copied = []
+    for fname in TEMPLATE_FILES:
+        dst = os.path.join(base_dir, fname)
+        if not os.path.exists(dst):
+            src = data_path / fname
+            with importlib.resources.as_file(src) as src_path:
+                shutil.copy2(str(src_path), dst)
+            copied.append(fname)
+    if copied:
+        _log(f"✓ Copied data files to working dir: {copied}")
+
+
+def _make_bridge_code():
+    return f"""
+import os, sys
+auto_dir = r"{AUTO_DIR}"
+eq_dir   = os.environ.get("AUTO_EQ_DIR", ".")
+os.chdir(auto_dir)
+if auto_dir not in sys.path:
+    sys.path.append(auto_dir)
+import auto
+os.chdir(eq_dir)
+auto.auto("initial_data_generation.auto")
+"""
+
+
+def _setup_worker_dirs(base_dir, n_workers):
+    for i in range(n_workers):
+        wdir = os.path.join(base_dir, f"worker_{i}")
+        os.makedirs(wdir, exist_ok=True)
+        for fname in TEMPLATE_FILES:
+            src = os.path.join(base_dir, fname)
+            if os.path.exists(src):
+                shutil.copy2(src, os.path.join(wdir, fname))
+    _log(f"✓ {n_workers} worker dirs ready")
+
+
+def _cleanup_worker_dirs(base_dir, n_workers):
+    for i in range(n_workers):
+        wdir = os.path.join(base_dir, f"worker_{i}")
+        if os.path.exists(wdir):
+            shutil.rmtree(wdir)
+    _log("✓ Worker dirs deleted")
+
+
+def _cleanup_auto_files(base_dir):
+    for prefix in ["b", "s", "d"]:
+        for name in ["upper", "lower"]:
+            fn = os.path.join(base_dir, f"{prefix}.{name}")
+            if os.path.exists(fn):
+                os.remove(fn)
+    for ext in ["2", "3", "7", "8", "9"]:
+        fn = os.path.join(base_dir, f"fort.{ext}")
+        if os.path.exists(fn):
+            os.remove(fn)
+    for fname in ["uz_x_list.npz", FOLDERS_FILE]:
+        fp = os.path.join(base_dir, fname)
+        if os.path.exists(fp):
+            os.remove(fp)
+    _log("✓ Intermediate files deleted")
+
+
+def _run_one(base_dir, worker_id, uz_x_val, bridge_code, created_dirs):
+    wdir     = os.path.join(base_dir, f"worker_{worker_id}")
+    dir_name = _folder_name(uz_x_val)
+
+    np.savez(
+        os.path.join(wdir, "uz_x_list.npz"),
+        uz_x_list=np.array([uz_x_val])
+    )
+
+    env = os.environ.copy()
+    env["AUTO_EQ_DIR"] = wdir
+
+    _log(f"  → worker_{worker_id}  uz_x={uz_x_val}  ({dir_name})")
+    ret = subprocess.call([PYTHON26, "-c", bridge_code], env=env, cwd=wdir)
+
+    if ret != 0:
+        _log(f"  ✗ worker_{worker_id} FAILED  uz_x={uz_x_val}")
+        return False, uz_x_val
+
+    src_dir = os.path.join(wdir, dir_name)
+    dst_dir = os.path.join(base_dir, dir_name)
+
+    if not os.path.exists(src_dir):
+        _log(f"  ✗ worker_{worker_id}: {dir_name} not found after run")
+        return False, uz_x_val
+
+    if os.path.exists(dst_dir):
+        shutil.rmtree(dst_dir)
+    shutil.copytree(src_dir, dst_dir)
+
+    with created_lock:
+        created_dirs.append(dst_dir)
+
+    _log(f"  ✓ worker_{worker_id} done  uz_x={uz_x_val}  → {dir_name}")
+    return True, uz_x_val
+
+
+def run_generation(uz_x_start, uz_x_end, uz_x_step,
+                   n_workers=4, base_dir=None):
+    """
+    Run parallel AUTO continuation sweep over a uz_x range.
+
+    Parameters
+    ----------
+    uz_x_start : float   e.g. 0.60
+    uz_x_end   : float   e.g. 0.99
+    uz_x_step  : float   e.g. 0.01
+    n_workers  : int     parallel AUTO processes (default 4)
+    base_dir   : str     working directory (default: cwd)
+
+    Returns
+    -------
+    succeeded       : list[float]  uz_x values completed successfully
+    failed          : list[float]  uz_x values that failed
+    created_folders : list[str]    absolute paths of d0p* folders created
+    """
+    base_dir = base_dir or os.path.abspath(os.getcwd())
+
+    # Copy bundled data files to working dir if missing
+    _copy_data_files_to(base_dir)
+
+    uz_x_list = [round(v, 4) for v in
+                 np.arange(uz_x_start, uz_x_end + uz_x_step / 2, uz_x_step)]
+
+    _log(f"\n{len(uz_x_list)} iterations: {uz_x_list}")
+    _log(f"N_WORKERS = {n_workers}\n")
+
+    # Save full list for reference
+    np.savez(os.path.join(base_dir, "uz_x_list.npz"),
+             uz_x_list=np.array(uz_x_list))
+
+    n_w = min(n_workers, len(uz_x_list))
+    _setup_worker_dirs(base_dir, n_w)
+
+    bridge_code  = _make_bridge_code()
+    created_dirs = []
+    tasks        = [(i % n_w, v) for i, v in enumerate(uz_x_list)]
+    succeeded, failed = [], []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=n_w) as pool:
+        futures = {
+            pool.submit(_run_one, base_dir, wid, val, bridge_code, created_dirs): val
+            for wid, val in tasks
+        }
+        for future in concurrent.futures.as_completed(futures):
+            ok, val = future.result()
+            (succeeded if ok else failed).append(val)
+
+    _log(f"\n✓ {len(succeeded)} succeeded, {len(failed)} failed")
+    if failed:
+        _log(f"  Failed uz_x values: {failed}")
+
+    # Save folder list for parser
+    if created_dirs:
+        with open(os.path.join(base_dir, FOLDERS_FILE), "w") as f:
+            for d in sorted(created_dirs):
+                f.write(d + "\n")
+
+    _cleanup_worker_dirs(base_dir, n_w)
+    _cleanup_auto_files(base_dir)
+
+    return succeeded, failed, created_dirs

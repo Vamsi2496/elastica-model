@@ -1,0 +1,228 @@
+# initial_data_generation.auto
+#import os,auto
+#os.chdir("C:\\Users\\sanch\\Desktop\\Elastica model\\initial data generation")
+#auto.auto('initial_data_generation.auto')
+
+import time
+import numpy as np
+import os
+import shutil
+
+
+#uz_x_list = [round(v, 4) for v in np.arange(0.60, 1.00, 0.01)]                                       #user may update this section
+#uz_x_list = np.load("uz_x_list.npz")
+uz_x_list = np.load("uz_x_list.npz")["uz_x_list"].tolist()
+
+BASE_DIR = os.path.abspath(os.getcwd())
+
+def run_el3_and_save(uz_x=0.9995, ds=-0.0001,
+                     icp=('Asymmetric','Fx','Fy','MA','MB','PE')):
+
+    def sv_or_ap(name):
+        if os.path.exists("b.%s" % name):
+            ap(name)
+        else:
+            sv(name)
+
+    for fn in ['fort.9']:
+        if os.path.exists(fn):
+            os.remove(fn)
+
+    # ── step 1: run el3 to first branch point ────────────────────────────
+    m1 = run('el3', STOP='BP1')
+    time.sleep(3)
+
+    # ── step 2: continue past BP1, stop when x = uz_x ────────────────────
+    m2 = run(m1('BP1'), ISW=-1, UZSTOP={'x': uz_x}, NPR=10000)
+    sv_or_ap("upper")
+    time.sleep(3)
+
+    # ── step 3: find Amax (LP1 on Symmetric branch) ───────────────────────
+    m3 = run(m2('UZ1'), STOP='LP1',ICP=['Symmetric','Fx','Fy','MA','MB','PE'],DS=0.0001, NMX=15000, NPR=15000)
+    try:
+        m3('LP1')
+    except KeyError:
+        m3 = run(m2('UZ1'), STOP='LP1',
+                 ICP=['Symmetric','Fx','Fy','MA','MB','PE'],
+                 DS=-0.0001, NMX=15000, NPR=15000)
+    Amax = abs(m3('LP1')['Symmetric'])
+    NMAX = m3('LP1')['PT']
+    print "uz_x=%s  NMAX=%s  Amax=%s" % (uz_x, NMAX, Amax)
+    time.sleep(5)
+
+    # ── UZR breakpoints ───────────────────────────────────────────────────
+    bvals  = np.arange(0.5,  Amax + 1e-12,  0.5).tolist()
+    if len(bvals) == 0 or abs(bvals[-1] - Amax) > 1e-9:
+        bvals.append(Amax)
+    bvals1 = np.arange(-0.5, -Amax - 1e-12, -0.5).tolist()
+    bvals1.append(-Amax)
+
+    # ── step 4: positive Symmetric sweep ─────────────────────────────────
+    m5 = run(m2('UZ1'),
+             UZSTOP={'Symmetric': bvals[-1]}, STOP='LP1',
+             RL1=Amax+1, RL0=-Amax-1,
+             ICP=['Symmetric','Fx','Fy','MA','MB','PE'],
+             DS=0.0000001, UZR={'Symmetric': bvals[0:-1]},
+             NPR=15000, NMX=15000)
+    try:
+        m5('LP1')
+    except KeyError:
+        m5 = run(m2('UZ1'),
+                 UZSTOP={'Symmetric': bvals[-1]}, STOP='LP1',
+                 RL1=Amax+1, RL0=-Amax-1,
+                 ICP=['Symmetric','Fx','Fy','MA','MB','PE'],
+                 DS=-0.0000001, UZR={'Symmetric': bvals[0:-1]},
+                 NPR=15000, NMX=15000)
+    sv_or_ap("upper")
+    labels = m5[-1].getLabels()
+    time.sleep(10)
+
+    try:
+        m5('BP1')
+        BP_label      = m5('BP1')['LAB']
+        labels_to_use = [lab for lab in labels if lab < BP_label]
+    except KeyError:
+        labels_to_use = labels[0:-3]
+
+    for label_num in labels_to_use:
+        sol  = m5(label_num)
+        Bkey = round(sol['Symmetric'], 1)
+        try:
+            su = run(sol, STOP='LP1', UZSTOP={'Asymmetric': Amax},
+                     RL1=Amax, RL0=-Amax,
+                     ICP=['Asymmetric','Fx','Fy','MA','MB','PE'],
+                     DS=0.00001, NPR=50)
+            sv_or_ap("upper")
+            print "Bkey =", Bkey
+            time.sleep(3)
+        except Exception, e:
+            print "upper failed for Bkey=%s: %s" % (Bkey, e)
+            continue
+        try:
+            tu = run(sol, STOP='LP1', UZSTOP={'Asymmetric': -Amax},
+                     RL1=Amax, RL0=-Amax,
+                     ICP=['Asymmetric','Fx','Fy','MA','MB','PE'],
+                     DS=-0.00001, NPR=50)
+            sv_or_ap("lower")
+            time.sleep(3)
+        except Exception, e:
+            print "lower failed for Bkey=%s: %s" % (Bkey, e)
+            continue
+
+    time.sleep(10)
+
+    # ── step 5: negative Symmetric sweep ─────────────────────────────────
+    m4 = run(m2('UZ1'),
+             UZSTOP={'Symmetric': bvals1[-1]}, STOP='LP1',
+             RL1=Amax, RL0=-Amax,
+             ICP=['Symmetric','Fx','Fy','MA','MB','PE'],
+             DS=-0.0000001, UZR={'Symmetric': bvals1[0:-1]},
+             NPR=15000, NMX=15000)
+    if abs(m4[-1][-1]['Symmetric'] + Amax) > 1e0:
+        m4 = run(m2('UZ1'),
+                 UZSTOP={'Symmetric': bvals1[-1]}, STOP='LP1',
+                 RL1=Amax, RL0=-Amax,
+                 ICP=['Symmetric','Fx','Fy','MA','MB','PE'],
+                 DS=0.0000001, UZR={'Symmetric': bvals1[0:-1]},
+                 NPR=15000, NMX=15000)
+    sv_or_ap("upper")
+    labels1 = m4[-1].getLabels()
+    time.sleep(10)
+
+    for label_num in labels1:
+        sol        = m4(label_num)
+        Bkey       = round(sol['Symmetric'], 1)
+        sym0       = sol['Symmetric']
+        target_up  =  Amax + sym0
+        target_low = -Amax - sym0
+        try:
+            s = run(sol, UZSTOP={'Asymmetric': target_up},
+                    RL0=target_low,
+                    ICP=['Asymmetric','Fx','Fy','MA','MB','PE'],
+                    DS=0.00001, NPR=50)
+            sv_or_ap("upper")
+            print "Bkey =", Bkey
+            time.sleep(3)
+        except Exception, e:
+            print "upper failed for Bkey=%s: %s" % (Bkey, e)
+            continue
+        try:
+            t = run(sol, UZSTOP={'Asymmetric': target_low},
+                    RL1=target_up,
+                    ICP=['Asymmetric','Fx','Fy','MA','MB','PE'],
+                    DS=-0.00001, NPR=50)
+            sv_or_ap("lower")
+            time.sleep(3)
+        except Exception, e:
+            print "lower failed for Bkey=%s: %s" % (Bkey, e)
+            continue
+
+    time.sleep(10)
+
+    # ── step 6: asymmetric branch from UZ1 ───────────────────────────────
+    sa = run(m2('UZ1'), STOP=['LP1','BP1'],
+             UZSTOP={'Asymmetric': Amax}, RL1=Amax, RL0=-Amax,
+             ICP=['Asymmetric','Fx','Fy','MA','MB','PE'],
+             DS=0.00001, NPR=50)
+    sv_or_ap("upper")
+    time.sleep(3)
+
+    ta = run(m2('UZ1'), STOP=['LP1','BP1'],
+             UZSTOP={'Asymmetric': -Amax}, RL1=Amax, RL0=-Amax,
+             ICP=['Asymmetric','Fx','Fy','MA','MB','PE'],
+             DS=-0.00001, NPR=50)
+    sv_or_ap("lower")
+    time.sleep(3)
+
+    print "Amax =", Amax
+    print "NMAX =", NMAX
+    return m1, m2, m3, m4, m5
+
+
+
+
+for uz_x_val in uz_x_list:
+    suffix   = int(round(uz_x_val * 10000))        # 0.60→6000, 0.99→9900
+    dir_name = "d0p%d" % suffix                     # d0p6000 … d0p9900
+    dir_path = os.path.join(BASE_DIR, dir_name)
+
+    print "\n===== uz_x = %.4f  →  %s =====" % (uz_x_val, dir_name)
+
+    # ── wipe previous upper/lower files so sv_or_ap starts fresh ─────────
+    for prefix in ['b', 's', 'd']:
+        for name in ['upper', 'lower']:
+            fn = os.path.join(BASE_DIR, "%s.%s" % (prefix, name))
+            if os.path.exists(fn):
+                os.remove(fn)
+
+    try:
+        m1, m2, m3, m4, m5 = run_el3_and_save(uz_x=uz_x_val)
+
+        # ── create directory and copy s.upper / s.lower into it ──────────
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
+
+        copied = []
+        for prefix in ['b', 's', 'd']:
+            for name in ['upper', 'lower']:
+                src = os.path.join(BASE_DIR, "%s.%s" % (prefix, name))
+                if os.path.exists(src):
+                    shutil.copy2(src, os.path.join(dir_path, "%s.%s" % (prefix, name)))
+                    copied.append("%s.%s" % (prefix, name))
+
+        print "Saved to %s: %s" % (dir_name, ", ".join(copied) if copied else "NOTHING FOUND")
+
+    except Exception, e:
+        print "SKIPPED uz_x=%.2f — %s" % (uz_x_val, e)
+        continue
+# ── wipe trace upper/lower files ──
+for prefix in ['b', 's', 'd']:
+    for name in ['upper', 'lower']:
+        fn = os.path.join(BASE_DIR, "%s.%s" % (prefix, name))
+        if os.path.exists(fn):
+            os.remove(fn)
+for prefix in ['fort']:
+    for name in ['2', '3','7','8','9']:
+        fn = os.path.join(BASE_DIR, "%s.%s" % (prefix, name))
+        if os.path.exists(fn):
+            os.remove(fn)

@@ -1,0 +1,21 @@
+[build-system]
+requires      = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name            = "elastica-model"
+version         = "1.0.0"
+description     = "Elastica bifurcation model — AUTO data generation and querying"
+requires-python = ">=3.9"
+dependencies    = [
+    "numpy>=1.24",
+    "h5py>=3.9",
+    "rtree>=1.2",
+]
+
+[project.scripts]
+elastica-config   = "elastica_model.setup_config:main"
+elastica-generate = "elastica_model.cli:main"
+
+[tool.setuptools.package-data]
+elastica_model = ["data/*"]
