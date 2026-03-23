@@ -7,7 +7,7 @@ import glob
 NDIM = 4
 NPAR = 9
 
-
+__all__ = ["parse_folders","append_to_hdf5",]
 def read_lines(fname):
     with open(fname, "r") as f:
         lines = f.readlines()
@@ -15,6 +15,17 @@ def read_lines(fname):
 
 
 def count_sign_changes(arr):
+    """
+    counts the number of sign changes of an array
+
+    Parameters
+    ----------
+    arr    : list[float]   an array of numerical data
+    
+    Returns
+    -------
+    number of sign changes: int
+    """
     if len(arr) < 2:
         return 0
     signs = np.sign(arr)
@@ -24,7 +35,7 @@ def count_sign_changes(arr):
     return int(np.sum(np.diff(signs) != 0))
 
 
-def parse_auto_s_file(fname, ndim=NDIM, npar=NPAR, phi_threshold=None):
+def parse_auto_s_file(fname, ndim=NDIM, npar=NPAR):
     lines  = read_lines(fname)
     blocks = []
     i, nlines = 0, len(lines)
@@ -68,9 +79,8 @@ def parse_auto_s_file(fname, ndim=NDIM, npar=NPAR, phi_threshold=None):
         phi2 = par[4] + par[5]
         u2_arr = np.array(u2_l, dtype=float)
 
-        if phi_threshold is None or (
-                abs(phi1) <= phi_threshold and abs(phi2) <= phi_threshold):
-            blocks.append({
+
+        blocks.append({
                 "d":               d,
                 "phi1":            phi1,
                 "phi2":            phi2,
@@ -79,7 +89,7 @@ def parse_auto_s_file(fname, ndim=NDIM, npar=NPAR, phi_threshold=None):
                 "t":               np.array(t_l,  dtype=float),
                 "u1":              np.array(u1_l, dtype=float),
                 "u2":              u2_arr,
-            })
+        })
     return blocks
 
 
@@ -102,6 +112,26 @@ def pack(blocks):
 
 
 def append_to_hdf5(filename, d, phi1, phi2, sc, par_array, t, u1):
+    """
+    write/append the "auto" data to .h5 file 
+
+    Parameters
+    ----------
+    filename  : (str)   file name to which data to be saved e.g. data.h5
+    d         : list[float]
+    phi1      : list[float]
+    phi2      : list[float]
+    sc        : list[int]   the number of inflection points
+    par_array : list[list[float]] 9xn array of parameters
+    t         : list[list[float]] 201xn array of arc length
+    u1        : list[list[float]] 201xn array of theta
+    
+    Returns
+    -------
+    write/appennds the above data to a .h5 file
+    s       : starting id of the .h5 file
+    
+    """
     if os.path.exists(filename):
         with h5py.File(filename, "a") as f:
             s = len(f["d"])
@@ -134,6 +164,19 @@ def append_to_hdf5(filename, d, phi1, phi2, sc, par_array, t, u1):
 
 
 def update_rtree_index_hdf5(hdf5_file, rtree_prefix, start_idx):
+    """
+    create/update the rtree index file 
+
+    Parameters
+    ----------
+    hdf5_file    : (str)   file name to whose data rtree need to be created/updated
+    rtree_prefix : (str)   file name to which rtree index to be saved e.g. index
+    start_idx    : (int)   index of .h5 data from which rtree index to be updated
+    
+    Returns
+    -------
+    create/update the rtree index
+    """
     p = index.Property(); p.dimension = 3
     with h5py.File(hdf5_file, "r") as f:
         total = len(f["d"])
@@ -161,65 +204,106 @@ def update_rtree_index_hdf5(hdf5_file, rtree_prefix, start_idx):
 
 
 def process_folder(folder_path, hdf5_file="auto_data.h5",
-                   rtree_prefix="auto_rtree_index", phi_threshold=None):
+                   rtree_prefix="auto_rtree_index"):
     """Parse s.upper / s.lower from one folder into HDF5 + R-tree."""
     upper = os.path.join(folder_path, "s.upper")
     lower = os.path.join(folder_path, "s.lower")
     if not os.path.exists(upper) and not os.path.exists(lower):
         print(f"  WARNING: no s.upper/s.lower in {folder_path}, skipping")
-        return 0
+        return 0, [], [], [], []
     blocks = []
     if os.path.exists(upper):
-        blocks.extend(parse_auto_s_file(upper, NDIM, NPAR, phi_threshold))
+        blocks.extend(parse_auto_s_file(upper, NDIM, NPAR))
     if os.path.exists(lower):
-        blocks.extend(parse_auto_s_file(lower, NDIM, NPAR, phi_threshold))
+        blocks.extend(parse_auto_s_file(lower, NDIM, NPAR))
     if not blocks:
         return 0
     d, phi1, phi2, sc, par_array, t, u1, u2 = pack(blocks)
     n = len(blocks); blocks.clear()
     start_idx = append_to_hdf5(hdf5_file, d, phi1, phi2, sc, par_array, t, u1)
     update_rtree_index_hdf5(hdf5_file, rtree_prefix, start_idx)
+        # ── Build explicit output lists ───────────────────────────
+    hdf5_indices = []
+    d_values     = []
+    phi1_values  = []
+    phi2_values  = []
+
+    for j in range(n):
+        hdf5_indices.append(start_idx + j)
+        d_values.append(float(d[j]))
+        phi1_values.append(float(phi1[j]))
+        phi2_values.append(float(phi2[j]))
     del d, phi1, phi2, sc, par_array, t, u1, u2
     print(f"  ✓ {n} blocks  ← {os.path.basename(folder_path)}")
-    return n
+    return n, phi1_values, phi2_values, d_values, hdf5_indices
 
 
 def parse_folders(folders, hdf5_file="auto_data.h5",
-                  rtree_prefix="auto_rtree_index", phi_threshold=None):
+                  rtree_prefix="auto_rtree_index"):
     """
     Parse a list of folder paths into HDF5 + R-tree.
 
     Parameters
     ----------
-    folders       : list[str]   absolute or relative folder paths
-    hdf5_file     : str
-    rtree_prefix  : str
-    phi_threshold : float | None
+    folders       : list[str]   absolute or relative folder paths (in this case d0p*)
+    hdf5_file     : (str)   file name to which data generated by AUTO to be saved e.g. data.h5
+    rtree_prefix  : (str)   file name to which rtree index to be saved e.g. index
 
     Returns
     -------
-    total : int   number of solution blocks saved
+    total                : int   number of solution blocks saved
+    phi1_values          : list[float]
+    phi2_values          : list[float]
+    d_values             : list[float]
+    hdf5_indices         : list[float]
     """
     total = 0
+    hdf5_indices = []
+    d_values     = []
+    phi1_values  = []
+    phi2_values  = []
     print(f"\nParsing {len(folders)} folders...\n")
     for i, folder in enumerate(folders, 1):
         print(f"[{i}/{len(folders)}] {folder}")
-        if os.path.isdir(folder):
-            total += process_folder(folder, hdf5_file,
-                                    rtree_prefix, phi_threshold)
-        else:
+        if not os.path.isdir(folder):
             print(f"  WARNING: not a directory, skipping")
+            continue
+
+        n, f_phi1, f_phi2, f_d, f_idx  = process_folder(
+            folder, hdf5_file, rtree_prefix
+        )
+
+        total        += n
+        hdf5_indices += f_idx
+        d_values     += f_d
+        phi1_values  += f_phi1
+        phi2_values  += f_phi2
     print(f"\n✓ Total blocks saved: {total}")
     print(f"✓ HDF5 : {hdf5_file}")
     print(f"✓ R-tree: {rtree_prefix}.dat/.idx")
-    return total
+    return total, phi1_values, phi2_values, d_values, hdf5_indices
 
 
 def parse_all(pattern="d0p*", hdf5_file="auto_data.h5",
-              rtree_prefix="auto_rtree_index", phi_threshold=None):
-    """Parse all folders matching a glob pattern (e.g. 'd0p*')."""
+              rtree_prefix="auto_rtree_index"):
+    """
+    List out all folders matching a glob pattern (e.g. 'd0p*')
+     
+    Parse a list of folder paths into HDF5 + R-tree.
+
+    Parameters
+    ----------
+    pattern:       : (str)  a pattern of folder names(in this case d0p*)
+    hdf5_file     : (str)   file name to which data generated by AUTO to be saved e.g. data.h5
+    rtree_prefix  : (str)   file name to which rtree index to be saved e.g. index
+
+    Returns
+    -------
+    all matching folders
+
+    """
     folders = sorted(f for f in glob.glob(pattern) if os.path.isdir(f))
     if not folders:
         print(f"No directories matching '{pattern}' found in {os.getcwd()}")
         return 0
-    return parse_folders(folders, hdf5_file, rtree_prefix, phi_threshold)
+    return parse_folders(folders, hdf5_file, rtree_prefix)
