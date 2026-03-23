@@ -1,8 +1,7 @@
-# initial_data_generation.auto
+#only_boundary.auto
 #import os,auto
 #os.chdir("C:\\Users\\sanch\\Desktop\\Elastica model\\initial data generation")
-#auto.auto('initial_data_generation.auto')
-
+#auto.auto('only_boundary.auto')
 import time
 import numpy as np
 import os
@@ -34,7 +33,6 @@ def run_el3_and_save(uz_x=0.9995, ds=-0.0001,
 
     # ── step 2: continue past BP1, stop when x = uz_x ────────────────────
     m2 = run(m1('BP1'), ISW=-1, UZSTOP={'x': uz_x}, NPR=10000)
-    sv_or_ap("upper")
     time.sleep(3)
 
     # ── step 3: find Amax (LP1 on Symmetric branch) ───────────────────────
@@ -45,6 +43,7 @@ def run_el3_and_save(uz_x=0.9995, ds=-0.0001,
         m3 = run(m2('UZ1'), STOP='LP1',
                  ICP=['Symmetric','Fx','Fy','MA','MB','PE'],
                  DS=-0.0001, NMX=15000, NPR=15000)
+    sv_or_ap("upper")
     Amax = abs(m3('LP1')['Symmetric'])
     NMAX = m3('LP1')['PT']
     print "uz_x=%s  NMAX=%s  Amax=%s" % (uz_x, NMAX, Amax)
@@ -73,7 +72,6 @@ def run_el3_and_save(uz_x=0.9995, ds=-0.0001,
                  ICP=['Symmetric','Fx','Fy','MA','MB','PE'],
                  DS=-0.0000001, UZR={'Symmetric': bvals[0:-1]},
                  NPR=15000, NMX=15000)
-    sv_or_ap("upper")
     labels = m5[-1].getLabels()
     time.sleep(10)
 
@@ -91,7 +89,7 @@ def run_el3_and_save(uz_x=0.9995, ds=-0.0001,
             su = run(sol, STOP='LP1', UZSTOP={'Asymmetric': Amax},
                      RL1=Amax, RL0=-Amax,
                      ICP=['Asymmetric','Fx','Fy','MA','MB','PE'],
-                     DS=0.00001, NPR=50)
+                     DS=0.00001)
             sv_or_ap("upper")
             print "Bkey =", Bkey
             time.sleep(3)
@@ -102,7 +100,7 @@ def run_el3_and_save(uz_x=0.9995, ds=-0.0001,
             tu = run(sol, STOP='LP1', UZSTOP={'Asymmetric': -Amax},
                      RL1=Amax, RL0=-Amax,
                      ICP=['Asymmetric','Fx','Fy','MA','MB','PE'],
-                     DS=-0.00001, NPR=50)
+                     DS=-0.00001)
             sv_or_ap("lower")
             time.sleep(3)
         except Exception, e:
@@ -125,7 +123,6 @@ def run_el3_and_save(uz_x=0.9995, ds=-0.0001,
                  ICP=['Symmetric','Fx','Fy','MA','MB','PE'],
                  DS=0.0000001, UZR={'Symmetric': bvals1[0:-1]},
                  NPR=15000, NMX=15000)
-    sv_or_ap("upper")
     labels1 = m4[-1].getLabels()
     time.sleep(10)
 
@@ -139,7 +136,7 @@ def run_el3_and_save(uz_x=0.9995, ds=-0.0001,
             s = run(sol, UZSTOP={'Asymmetric': target_up},
                     RL0=target_low,
                     ICP=['Asymmetric','Fx','Fy','MA','MB','PE'],
-                    DS=0.00001, NPR=50)
+                    DS=0.00001)
             sv_or_ap("upper")
             print "Bkey =", Bkey
             time.sleep(3)
@@ -150,7 +147,7 @@ def run_el3_and_save(uz_x=0.9995, ds=-0.0001,
             t = run(sol, UZSTOP={'Asymmetric': target_low},
                     RL1=target_up,
                     ICP=['Asymmetric','Fx','Fy','MA','MB','PE'],
-                    DS=-0.00001, NPR=50)
+                    DS=-0.00001)
             sv_or_ap("lower")
             time.sleep(3)
         except Exception, e:
@@ -163,14 +160,14 @@ def run_el3_and_save(uz_x=0.9995, ds=-0.0001,
     sa = run(m2('UZ1'), STOP=['LP1','BP1'],
              UZSTOP={'Asymmetric': Amax}, RL1=Amax, RL0=-Amax,
              ICP=['Asymmetric','Fx','Fy','MA','MB','PE'],
-             DS=0.00001, NPR=50)
+             DS=0.00001)
     sv_or_ap("upper")
     time.sleep(3)
 
     ta = run(m2('UZ1'), STOP=['LP1','BP1'],
              UZSTOP={'Asymmetric': -Amax}, RL1=Amax, RL0=-Amax,
              ICP=['Asymmetric','Fx','Fy','MA','MB','PE'],
-             DS=-0.00001, NPR=50)
+             DS=-0.00001)
     sv_or_ap("lower")
     time.sleep(3)
 
@@ -213,5 +210,5 @@ for uz_x_val in uz_x_list:
         print "Saved to %s: %s" % (dir_name, ", ".join(copied) if copied else "NOTHING FOUND")
 
     except Exception, e:
-        print "SKIPPED uz_x=%.6f — %s" % (uz_x_val, e)
+        print "SKIPPED uz_x=%.2f — %s" % (uz_x_val, e)
         continue

@@ -8,7 +8,7 @@ import threading
 
 from .config import PYTHON26, AUTO_DIR
 
-TEMPLATE_FILES = ["el3.f90", "c.el3", "initial_data_generation.auto"]
+TEMPLATE_FILES = ["el3.f90", "c.el3", "initial_data_generation.auto","only_boundary.auto"]
 FOLDERS_FILE   = "folders_this_run.txt"
 
 log_lock     = threading.Lock()
@@ -21,7 +21,7 @@ def _log(msg):
 
 
 def _folder_name(uz_x):
-    return "d0p%d" % int(round(uz_x * 10000))
+    return "d0p%d" % int(round(uz_x * 1e6))
 
 
 def _copy_data_files_to(base_dir):
@@ -42,7 +42,7 @@ def _copy_data_files_to(base_dir):
         _log(f"✓ Copied data files to working dir: {copied}")
 
 
-def _make_bridge_code():
+def _make_bridge_code1():
     return f"""
 import os, sys
 auto_dir = r"{AUTO_DIR}"
@@ -55,6 +55,18 @@ os.chdir(eq_dir)
 auto.auto("initial_data_generation.auto")
 """
 
+def _make_bridge_code2():
+    return f"""
+import os, sys
+auto_dir = r"{AUTO_DIR}"
+eq_dir   = os.environ.get("AUTO_EQ_DIR", ".")
+os.chdir(auto_dir)
+if auto_dir not in sys.path:
+    sys.path.append(auto_dir)
+import auto
+os.chdir(eq_dir)
+auto.auto("only_boundary.auto")
+"""
 
 def _setup_worker_dirs(base_dir, n_workers):
     for i in range(n_workers):
@@ -75,6 +87,7 @@ def _cleanup_worker_dirs(base_dir, n_workers):
     _log("✓ Worker dirs deleted")
 
 
+    
 def _cleanup_auto_files(base_dir):
     for prefix in ["b", "s", "d"]:
         for name in ["upper", "lower"]:
@@ -86,6 +99,11 @@ def _cleanup_auto_files(base_dir):
         if os.path.exists(fn):
             os.remove(fn)
     for fname in ["uz_x_list.npz", FOLDERS_FILE]:
+        fp = os.path.join(base_dir, fname)
+        if os.path.exists(fp):
+            os.remove(fp)
+    # ── Template files copied from data\ ─────────────────────
+    for fname in TEMPLATE_FILES:
         fp = os.path.join(base_dir, fname)
         if os.path.exists(fp):
             os.remove(fp)
@@ -129,7 +147,7 @@ def _run_one(base_dir, worker_id, uz_x_val, bridge_code, created_dirs):
     return True, uz_x_val
 
 
-def run_generation(uz_x_start, uz_x_end, n_layers,
+def run_generation(uz_x_start, uz_x_end=None, n_layers=1,
                    n_workers=4, base_dir=None):
     """
     Run parallel AUTO continuation sweep over a uz_x range.
@@ -153,9 +171,12 @@ def run_generation(uz_x_start, uz_x_end, n_layers,
     # Copy bundled data files to working dir if missing
     _copy_data_files_to(base_dir)
 
-    # ── Evenly spaced using linspace ─────────────────────────
-    uz_x_list = [round(v, 10) for v in
-                 np.linspace(uz_x_start, uz_x_end, n_layers)]
+    # ── Single value or range ─────────────────────────────────
+    if uz_x_end is None or uz_x_end == uz_x_start:
+        uz_x_list = [round(uz_x_start, 10)]
+    else:
+        uz_x_list = [round(v, 10) for v in
+                     np.linspace(uz_x_start, uz_x_end, n_layers)]
 
     _log(f"\n{n_layers} layers: {uz_x_list[0]} → {uz_x_list[-1]}")
     _log(f"uz_x values : {uz_x_list}")
@@ -168,7 +189,78 @@ def run_generation(uz_x_start, uz_x_end, n_layers,
     n_w = min(n_workers, len(uz_x_list))
     _setup_worker_dirs(base_dir, n_w)
 
-    bridge_code  = _make_bridge_code()
+    bridge_code  = _make_bridge_code1()
+    created_dirs = []
+    tasks        = [(i % n_w, v) for i, v in enumerate(uz_x_list)]
+    succeeded, failed = [], []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=n_w) as pool:
+        futures = {
+            pool.submit(_run_one, base_dir, wid, val, bridge_code, created_dirs): val
+            for wid, val in tasks
+        }
+        for future in concurrent.futures.as_completed(futures):
+            ok, val = future.result()
+            (succeeded if ok else failed).append(val)
+
+    _log(f"\n✓ {len(succeeded)} succeeded, {len(failed)} failed")
+    if failed:
+        _log(f"  Failed uz_x values: {failed}")
+
+    # Save folder list for parser
+    if created_dirs:
+        with open(os.path.join(base_dir, FOLDERS_FILE), "w") as f:
+            for d in sorted(created_dirs):
+                f.write(d + "\n")
+
+    _cleanup_worker_dirs(base_dir, n_w)
+    _cleanup_auto_files(base_dir)
+
+    return succeeded, failed, created_dirs
+
+def run_generation_only_boundary(uz_x_start, uz_x_end=None, n_layers=1,
+                   n_workers=4, base_dir=None):
+    """
+    Run parallel AUTO continuation sweep over a uz_x range.
+
+    Parameters
+    ----------
+    uz_x_start : float   e.g. 0.60
+    uz_x_end   : float   e.g. 0.99
+    n_layers   : int     number of evenly spaced uz_x values (inclusive)
+    n_workers  : int     parallel AUTO processes (default 4)
+    base_dir   : str     working directory (default: cwd)
+
+    Returns
+    -------
+    succeeded       : list[float]
+    failed          : list[float]
+    created_folders : list[str]
+    """
+    base_dir = base_dir or os.path.abspath(os.getcwd())
+
+    # Copy bundled data files to working dir if missing
+    _copy_data_files_to(base_dir)
+
+    # ── Single value or range ─────────────────────────────────
+    if uz_x_end is None or uz_x_end == uz_x_start:
+        uz_x_list = [round(uz_x_start, 10)]
+    else:
+        uz_x_list = [round(v, 10) for v in
+                     np.linspace(uz_x_start, uz_x_end, n_layers)]
+
+    _log(f"\n{n_layers} layers: {uz_x_list[0]} → {uz_x_list[-1]}")
+    _log(f"uz_x values : {uz_x_list}")
+    _log(f"N_WORKERS   : {n_workers}\n")
+
+    # Save full list for reference
+    np.savez(os.path.join(base_dir, "uz_x_list.npz"),
+             uz_x_list=np.array(uz_x_list))
+
+    n_w = min(n_workers, len(uz_x_list))
+    _setup_worker_dirs(base_dir, n_w)
+
+    bridge_code  = _make_bridge_code2()
     created_dirs = []
     tasks        = [(i % n_w, v) for i, v in enumerate(uz_x_list)]
     succeeded, failed = [], []
