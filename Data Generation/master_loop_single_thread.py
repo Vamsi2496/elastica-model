@@ -11,11 +11,11 @@ from rtree import index
 # ═══════════════════════════════════════════════════════════════════════════════
 #  CONFIG  — edit these
 # ═══════════════════════════════════════════════════════════════════════════════
-N_POINTS    = 35000
+N_POINTS    = 1
 EQ_DIR      = r"C:\Users\sanch\Desktop\Restart solution"
-MESH_FILE   = "surface mesh poisson better.ply"
-HDF5_FILE   = "auto_data.h5"
-RTREE_BASE  = "auto_rtree_index"
+MESH_FILE   = "final_mesh.off"
+HDF5_FILE   = "data.h5"
+RTREE_BASE  = "index"
 DAT_FILE    = "s.initial"
 LOG_FILE    = "pipeline_log.txt"
 BRIDGE_EXE  = r"C:\Python26\python.exe"
@@ -91,11 +91,11 @@ def find_closest_in_hdf5(found_point, idx):
 
     # FIX: lower-d bound was `s_d` (not `s_d - RADIUS_D`) in original code
     query_bbox = (
-        s_d    ,    s_phi1 - RADIUS_PHI1,  s_phi2 - RADIUS_PHI2,
-        s_d    + RADIUS_D,    s_phi1 + RADIUS_PHI1,  s_phi2 + RADIUS_PHI2,
+        s_d    ,    s_phi1 ,  s_phi2 ,
+        s_d    ,    s_phi1 ,  s_phi2 ,
     )
 
-    hits = list(idx.intersection(query_bbox, objects=True))
+    hits = list(idx.nearest(query_bbox, 3, objects=True))
     print(f"  R-tree hits: {len(hits)}")
     if not hits:
         print("  No hits — increase RADIUS_* or check index.")

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from rtree import index as rtree_index
 
 def plot_3d(hdf5_file="auto_data.h5",save_dir=None):
-    """3D plot with d, phi1, phi2 as axes"""
+    """3D plot with d, phi1, phi2 as axes. Colored by PAR(9), marker by inflection points."""
 
 
 

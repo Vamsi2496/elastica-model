@@ -186,7 +186,7 @@ for uz_x_val in uz_x_list:
     dir_name = "d0p%d" % suffix                     # d0p6000 … d0p9900
     dir_path = os.path.join(BASE_DIR, dir_name)
 
-    print "\n===== uz_x = %.4f  →  %s =====" % (uz_x_val, dir_name)
+    print "\n===== uz_x = %.6f  →  %s =====" % (uz_x_val, dir_name)
 
     # ── wipe previous upper/lower files so sv_or_ap starts fresh ─────────
     for prefix in ['b', 's', 'd']:

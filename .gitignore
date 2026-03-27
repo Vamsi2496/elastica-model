@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.eggs/
+*.egg-info/
 
 # Numpy / data
 *.npz
@@ -30,6 +32,20 @@ __pycache__/
 *.tmp
 *.bak
 
+#AUTO files
+s.*
+b.*
+d.*
+fort.*
+
 # OS files
 Thumbs.db
 .DS_Store
+
+# Generated data output
+initial data generation/d0p*/
+initial data generation/auto_data.h5
+initial data generation/auto_rtree_index.*
+initial data generation/uz_x_list.npz
+initial data generation/worker_*/
+

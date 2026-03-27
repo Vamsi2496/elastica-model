@@ -1,5 +1,6 @@
 import sys
 import os
+import glob
 from .generation   import run_generation, run_generation_only_boundary
 from .parsing      import parse_folders
 from .setup_config import show_config
@@ -19,36 +20,32 @@ def main():
     rtree_prefix = input("R-tree index prefix  [auto_rtree_index]: ").strip() \
                    or "auto_rtree_index"
     type=input("Required data, only boundary (enter 'b') or inplane also (enter 'i'): ").strip().lower()  or 'i'
-    keep_folders = input("AUTO data is stored in d0p* folders. do you want to keep the folders (enter 'y') otherwise (enter 'n'): ").strip().lower() != "n"
+    keep_AUTO_folders = input("AUTO data is stored in d0p* folders. do you want to keep the folders (enter 'y') otherwise (enter 'n'): ").strip().lower() != "n"
     # ── Run AUTO generation ───────────────────────────────────
     if type == "i":
-        succeeded, failed, created_folders = run_generation(
+        total, phi1_values, phi2_values, d_values, hdf5_indices = run_generation(
         uz_x_start, uz_x_end, n_layers,
         n_workers=n_workers
         )
     if type == "b":
-        succeeded, failed, created_folders = run_generation_only_boundary(
+        total, phi1_values, phi2_values, d_values, hdf5_indices = run_generation_only_boundary(
         uz_x_start, uz_x_end, n_layers,
         n_workers=n_workers
         )
     else:
         print("Invalid input. Defaulting to 'i'")
-        succeeded, failed, created_folders = run_generation(
+        total, phi1_values, phi2_values, d_values, hdf5_indices = run_generation(
         uz_x_start, uz_x_end, n_layers,
         n_workers=n_workers
         )
+    created_folders = sorted(f for f in glob.glob(pattern="d0p*") if os.path.isdir(f))
     if not created_folders:
         print("\n✗ No folders created — nothing to parse.")
         sys.exit(1)
 
-    # ── Parse only folders created this run ──────────────────
-    total = parse_folders(
-        created_folders,
-        hdf5_file=hdf5_file,
-        rtree_prefix=rtree_prefix
-    )
+    
     # THEN delete folders if user said no
-    if not keep_folders:
+    if not keep_AUTO_folders:
         import shutil
         for folder in created_folders:
             if os.path.exists(folder):

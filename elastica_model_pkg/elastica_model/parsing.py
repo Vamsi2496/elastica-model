@@ -7,7 +7,7 @@ import glob
 NDIM = 4
 NPAR = 9
 
-__all__ = ["parse_folders","append_to_hdf5",]
+__all__ = ["parse_folders","parse_all",]
 def read_lines(fname):
     with open(fname, "r") as f:
         lines = f.readlines()
@@ -299,7 +299,7 @@ def parse_all(pattern="d0p*", hdf5_file="auto_data.h5",
 
     Returns
     -------
-    all matching folders
+    creates the list of folders matching the pattern, calls the parse_folders() and returns total, phi1_values, phi2_values, d_values, hdf5_indices
 
     """
     folders = sorted(f for f in glob.glob(pattern) if os.path.isdir(f))
