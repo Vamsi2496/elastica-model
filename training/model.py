@@ -4,7 +4,7 @@ from config import Config
 
 
 class ResBlock(nn.Module):
-    """Pre-activation residual block with LayerNorm."""
+    """Pre-activation residual block with LayerNorm + GELU."""
     def __init__(self, dim):
         super().__init__()
         self.block = nn.Sequential(
@@ -23,33 +23,32 @@ class ElasticaScalarNet(nn.Module):
     Scalar surrogate:
         (phi1, phi2, d)  →  (Fx, Fy, ML, MR)
 
-    Pure ResNet — no SIREN, no arc length, no theta.
-    Arc length and theta are used ONLY in loss.py as physics teachers.
+    No SIREN — scalar regression does not need sinusoidal embedding.
+    No arc length / theta inputs — physics used only in loss.py.
 
     Architecture:
-        Linear embed  : 3   → hidden   (replaces SineLayer)
+        Linear embed  : 3 → hidden  + GELU
         ResBlock × N  : hidden → hidden
-        Scalar head   : hidden → 4
+        Scalar head   : hidden → 256 → 128 → 4
     """
 
     def __init__(self,
-                 hidden  = Config.HIDDEN_DIM,
-                 n_blocks= Config.N_BLOCKS):
+                 hidden   = Config.HIDDEN_DIM,
+                 n_blocks = Config.N_BLOCKS):
         super().__init__()
 
-        # ── Input embedding ──────────────────────────────────────── #
-        # Simple linear + GELU — appropriate for scalar tabular input
+        # ── Input embedding ───────────────────────────────────────────── #
         self.embed = nn.Sequential(
             nn.Linear(3, hidden),
             nn.GELU(),
         )
 
-        # ── Deep residual encoder ─────────────────────────────────── #
+        # ── Residual encoder ──────────────────────────────────────────── #
         self.encoder = nn.Sequential(
             *[ResBlock(hidden) for _ in range(n_blocks)]
         )
 
-        # ── Scalar output head ────────────────────────────────────── #
+        # ── Output head ───────────────────────────────────────────────── #
         self.head = nn.Sequential(
             nn.LayerNorm(hidden),
             nn.Linear(hidden, 256), nn.GELU(),
@@ -57,24 +56,22 @@ class ElasticaScalarNet(nn.Module):
             nn.Linear(128,      4),            # Fx, Fy, ML, MR
         )
 
-        # Kaiming initialisation — correct for GELU
         self._init_weights()
 
     def _init_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Linear):
-                nn.init.kaiming_normal_(m.weight,
-                                        nonlinearity="relu")
+                nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
 
     def forward(self, phi):
         """
-        phi : (B, 3)  normalised (phi1, phi2, d)
-        Returns scalars : (B, 4)  Fx, Fy, ML, MR
+        phi     : (B, 3)  normalised (phi1, phi2, d)
+        returns : (B, 4)  normalised (Fx, Fy, ML, MR)
         """
-        z = self.encoder(self.embed(phi))      # (B, hidden)
-        return self.head(z)                    # (B, 4)
+        z = self.encoder(self.embed(phi))
+        return self.head(z)
 
     def count_params(self):
         return sum(p.numel() for p in self.parameters()

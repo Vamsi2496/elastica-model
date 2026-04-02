@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import json
+from torch.amp import autocast
 
 from config  import Config
 from dataset import get_loaders
@@ -15,24 +16,35 @@ def r2(y_true, y_pred):
 
 @torch.no_grad()
 def test():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = Config.DEVICE
+    print(f"Device : {device}\n")
 
     ckpt  = torch.load(Config.CKPT_BEST, map_location=device)
     model = ElasticaScalarNet().to(device)
     model.load_state_dict(ckpt["model_state"])
     model.eval()
-    print(f"Loaded epoch {ckpt['epoch']}  val_loss={ckpt['val_loss']:.6f}\n")
+
+    if Config.COMPILE:
+        model = torch.compile(model)
+
+    print(f"Loaded epoch {ckpt['epoch']}  "
+          f"val_loss={ckpt['val_loss']:.6f}\n")
 
     _, _, test_loader, dataset = get_loaders(Config.HDF5_PATH,
                                              compute_stats=False)
-    y_mean = torch.from_numpy(dataset.y_mean).to(device)
-    y_std  = torch.from_numpy(dataset.y_std).to(device)
+    y_mean = torch.tensor(dataset.y_mean, device=device)
+    y_std  = torch.tensor(dataset.y_std,  device=device)
 
     sp_all, st_all = [], []
 
     for x, y, arc, theta in test_loader:
-        x, y = x.to(device), y.to(device)
-        sp = model(x)                          # only phi needed
+        x = x.to(device, non_blocking=True)
+        y = y.to(device, non_blocking=True)
+
+        with autocast(device_type=str(device),
+                      enabled=Config.MIXED_PREC):
+            sp = model(x)
+
         sp_all.append((sp * y_std + y_mean).cpu().numpy())
         st_all.append((y  * y_std + y_mean).cpu().numpy())
 
@@ -49,8 +61,8 @@ def test():
         rmse   = np.sqrt(np.mean((ST[:, i] - SP[:, i]) ** 2))
         maxerr = np.max(np.abs(ST[:, i] - SP[:, i]))
         print(f"{name:<12} {r2_val:>9.5f} {rmse:>13.4e} {maxerr:>13.4e}")
-        results[name] = {"R2": float(r2_val),
-                         "RMSE": float(rmse),
+        results[name] = {"R2"    : float(r2_val),
+                         "RMSE"  : float(rmse),
                          "MaxErr": float(maxerr)}
 
     print("=" * 62)
@@ -59,36 +71,5 @@ def test():
     print("Saved → test_results.json")
 
 
-def predict_single(phi1, phi2, d):
-    """
-    Predict Fx, Fy, ML, MR for one beam configuration.
-    Only phi1, phi2, d needed — no arc length, no theta.
-    """
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    stats  = np.load(Config.NORM_STATS)
-    x_mean = stats["x_mean"];  x_std = stats["x_std"]
-    y_mean = stats["y_mean"];  y_std = stats["y_std"]
-
-    phi   = (np.array([phi1, phi2, d], dtype=np.float32) - x_mean) / x_std
-    phi_t = torch.from_numpy(phi).unsqueeze(0).to(device)
-
-    ckpt  = torch.load(Config.CKPT_BEST, map_location=device)
-    model = ElasticaScalarNet().to(device)
-    model.load_state_dict(ckpt["model_state"])
-    model.eval()
-
-    with torch.no_grad():
-        sp = model(phi_t)
-
-    sp_phys = sp.cpu().numpy()[0] * y_std + y_mean
-    return {"Fx": float(sp_phys[0]), "Fy": float(sp_phys[1]),
-            "M_left": float(sp_phys[2]), "M_right": float(sp_phys[3])}
-
-
 if __name__ == "__main__":
     test()
-
-    print("\n── Single prediction example ──")
-    r = predict_single(phi1=0, phi2=0, d=0.91)
-    print(f"Fx={r['Fx']:.4f}  Fy={r['Fy']:.6f}  "
-          f"ML={r['M_left']:.4f}  MR={r['M_right']:.4f}")
