@@ -2,41 +2,35 @@ import os, time, json
 import torch
 import torch.optim as optim
 from torch.optim.lr_scheduler import OneCycleLR
-from torch.cuda.amp import GradScaler, autocast
 
 from config  import Config
 from dataset import get_loaders
-from model   import ElasticaINR
+from model   import ElasticaScalarNet
 from loss    import ElasticaLoss
 
 
 def train():
     os.makedirs(Config.CKPT_DIR, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device : {device}")
+    print(f"Device : {device}\n")
 
-    # ── Data ─────────────────────────────────────────────────────────── #
     train_loader, val_loader, _, dataset = get_loaders(Config.HDF5_PATH)
-    print(f"Train batches : {len(train_loader)}")
-    print(f"Val   batches : {len(val_loader)}")
+    print(f"\nTrain batches : {len(train_loader)}")
+    print(f"Val   batches : {len(val_loader)}\n")
 
-    # ── Model ─────────────────────────────────────────────────────────── #
-    model = ElasticaINR().to(device)
-    print(f"Parameters    : {model.count_params():,}")
+    model = ElasticaScalarNet().to(device)
+    print(f"Parameters    : {model.count_params():,}\n")
 
-    # ── Optimiser & scheduler ─────────────────────────────────────────── #
     criterion = ElasticaLoss(dataset)
     optimizer = optim.AdamW(model.parameters(),
-                            lr           = Config.LR,
-                            weight_decay = Config.WEIGHT_DECAY)
+                            lr=Config.LR,
+                            weight_decay=Config.WEIGHT_DECAY)
     scheduler = OneCycleLR(optimizer,
                            max_lr          = Config.LR,
                            steps_per_epoch = len(train_loader),
                            epochs          = Config.EPOCHS,
                            pct_start       = 0.1)
-    scaler = GradScaler(enabled=Config.MIXED_PREC)
 
-    # ── Loop ─────────────────────────────────────────────────────────── #
     history  = {"train": [], "val": [], "breakdown": []}
     best_val = float("inf")
 
@@ -48,33 +42,29 @@ def train():
         for step, (x, y, arc, theta) in enumerate(train_loader):
             x, y, arc, theta = [t.to(device) for t in (x, y, arc, theta)]
 
-            with autocast(enabled=Config.MIXED_PREC):
-                scalar_pred, theta_pred = model(x, arc)
-                loss, bd = criterion(scalar_pred, theta_pred,
-                                     y, theta, arc)
+            # Model only needs phi — no arc, no theta
+            scalar_pred = model(x)
+
+            # Loss uses TRUE theta and arc as physics teachers
+            loss, bd = criterion(scalar_pred, y, theta, arc)
 
             optimizer.zero_grad(set_to_none=True)
-            scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
+            loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(),
                                            Config.GRAD_CLIP)
-            scaler.step(optimizer)
-            scaler.update()
+            optimizer.step()
             scheduler.step()
-
             epoch_loss += loss.item()
 
             if step % Config.LOG_INTERVAL == 0:
-                lr_now = scheduler.get_last_lr()[0]
-                print(f"  Ep {epoch:3d} | step {step:5d} | "
-                      f"loss={bd['total']:.5f} | "
+                print(f"  Ep {epoch:3d} | step {step:3d} | "
+                      f"total={bd['total']:.5f} | "
                       f"scalar={bd['scalar']:.5f} | "
-                      f"theta={bd['theta']:.5f} | "
-                      f"phys={bd['BC_moment']+bd['equilibrium']:.5f} | "
+                      f"BC={bd['BC_moment']:.5f} | "
+                      f"eq={bd['equilibrium']:.5f} | "
                       f"cons={bd['consistency']:.5f} | "
-                      f"lr={lr_now:.2e}")
+                      f"lr={scheduler.get_last_lr()[0]:.2e}")
 
-        # ── Validation ───────────────────────────────────────────────── #
         val_loss, val_bd = evaluate(model, val_loader, criterion, device)
         avg_train = epoch_loss / len(train_loader)
         print(f"\nEpoch {epoch:3d}/{Config.EPOCHS} | "
@@ -100,21 +90,17 @@ def train():
     print("Training complete.")
 
 
-# ── Validation helper ─────────────────────────────────────────────── #
 @torch.no_grad()
 def evaluate(model, loader, criterion, device):
     model.eval()
     total, bd_sum = 0.0, {}
-
     for x, y, arc, theta in loader:
         x, y, arc, theta = [t.to(device) for t in (x, y, arc, theta)]
-        with autocast(enabled=Config.MIXED_PREC):
-            sp, tp = model(x, arc)
-            loss, bd = criterion(sp, tp, y, theta, arc)
+        sp = model(x)                          # scalar only
+        loss, bd = criterion(sp, y, theta, arc)
         total += loss.item()
         for k, v in bd.items():
             bd_sum[k] = bd_sum.get(k, 0.0) + v
-
     n = len(loader)
     return total / n, {k: v / n for k, v in bd_sum.items()}
 

@@ -36,8 +36,9 @@ class Config:
 
     # ── Loss weights ─────────────────────────────────────────────────── #
     LAMBDA_THETA  = 1.0
-    LAMBDA_PHYS   = 0.1
-    LAMBDA_CONS   = 0.1
+    LAMBDA_PHYS   = 1.0
+    LAMBDA_CONS   = 1.0
+    FX_WEIGHT     = 10.0 
     EI            = 1.0                     # ← set your actual EI value
 
     # ── Training ─────────────────────────────────────────────────────── #
