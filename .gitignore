@@ -19,6 +19,8 @@ __pycache__/
 *.mod
 *.exe
 
+*.json
+
 # Simulation outputs
 *.dat
 *.idx
@@ -27,6 +29,7 @@ __pycache__/
 *.ply
 *.xyz
 *.txt
+*.png
 
 # Temporary files
 *.tmp
