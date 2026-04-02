@@ -184,10 +184,13 @@ class ElasticaLoss:
 
         # ── 6. Consistency ────────────────────────────────────────────── #
         Fx_d, Fy_d, ML_d, MR_d = self.derive_forces(tp, arc_phys)
-        loss_cons = (F.mse_loss(Fx, Fx_d) +
-                     F.mse_loss(Fy, Fy_d) +
-                     F.mse_loss(ML, ML_d) +
-                     F.mse_loss(MR, MR_d))
+        
+        # Normalise each term by its std so all are dimensionless
+        y_std = self.y_std.to(device)          # (4,) — [Fx_std, Fy_std, ML_std, MR_std]
+        loss_cons = (F.mse_loss(Fx, Fx_d) / (y_std[0] ** 2 + 1e-8) +
+                     F.mse_loss(Fy, Fy_d) / (y_std[1] ** 2 + 1e-8) +
+                     F.mse_loss(ML, ML_d) / (y_std[2] ** 2 + 1e-8) +
+                     F.mse_loss(MR, MR_d) / (y_std[3] ** 2 + 1e-8))
 
         # ── 7. Total ──────────────────────────────────────────────────── #
         loss_phys = loss_ML + loss_MR + loss_eq
