@@ -34,19 +34,21 @@ class Config:
     EI           = 1.0
 
     # ── Training ──────────────────────────────────────────────────────── #
-    BATCH_SIZE   = 2048
-    EPOCHS       = 25
+    BATCH_SIZE   = 131072
+    EPOCHS       = 50
     LR           = 3e-4
     WEIGHT_DECAY = 1e-5
     GRAD_CLIP    = 1.0
-    LOG_INTERVAL = 1
+    LOG_INTERVAL = 20
 
     # ── Device — auto detected ─────────────────────────────────────────── #
     DEVICE       = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     USE_GPU      = torch.cuda.is_available()
     MIXED_PREC   = USE_GPU          # AMP only on GPU — float16 forward pass
-    PIN_MEMORY   = USE_GPU          # pinned memory only useful with GPU
-    NUM_WORKERS  = 22 if USE_GPU else 0
+    PIN_MEMORY   = False
+    #PIN_MEMORY   = USE_GPU          # pinned memory only useful with GPU
+    #NUM_WORKERS  = 14 if USE_GPU else 0
+    NUM_WORKERS  = 0
     COMPILE      = USE_GPU          # torch.compile only on GPU (PyTorch >= 2.0)
 
     # ── Checkpointing ─────────────────────────────────────────────────── #
