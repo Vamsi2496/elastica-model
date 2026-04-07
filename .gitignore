@@ -43,5 +43,5 @@ Thumbs.db
 .DS_Store
 
 # Generated data output
-.png
+*.png
 
