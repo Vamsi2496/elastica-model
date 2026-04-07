@@ -35,7 +35,7 @@ class Config:
 
     # ── Training ──────────────────────────────────────────────────────── #
     BATCH_SIZE   = 2048
-    EPOCHS       = 50
+    EPOCHS       = 25
     LR           = 3e-4
     WEIGHT_DECAY = 1e-5
     GRAD_CLIP    = 1.0
@@ -46,7 +46,7 @@ class Config:
     USE_GPU      = torch.cuda.is_available()
     MIXED_PREC   = USE_GPU          # AMP only on GPU — float16 forward pass
     PIN_MEMORY   = USE_GPU          # pinned memory only useful with GPU
-    NUM_WORKERS  = 8 if USE_GPU else 0
+    NUM_WORKERS  = 22 if USE_GPU else 0
     COMPILE      = USE_GPU          # torch.compile only on GPU (PyTorch >= 2.0)
 
     # ── Checkpointing ─────────────────────────────────────────────────── #

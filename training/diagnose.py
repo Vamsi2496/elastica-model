@@ -2,7 +2,7 @@
 import h5py
 import numpy as np
 
-with h5py.File("data.h5", "r") as f:
+with h5py.File("auto_data.h5", "r") as f:
     print("=== ALL KEYS ===")
     for key in f.keys():
         ds = f[key]
