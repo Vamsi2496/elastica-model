@@ -22,32 +22,32 @@ class Config:
     IDX_M2 = 7
     IDX_ENERGY = 8
 
-    SCALAR_NAMES = ["Energy", "Fx", "M_left", "M_right"]
-    STIFFNESS_NAMES = ["phi1", "phi2", "d"]
+    SCALAR_NAMES = ["Energy", "Fx", "Fy", "M_left", "M_right"]
 
-    # Stored-label convention: label = SIGN * dU/dq
+    # stored labels = SIGN * dU/dq
     SIGN_FX = -1.0
-    SIGN_M1 = -1.0
-    SIGN_M2 = -1.0
+    SIGN_M1 = 1.0
+    SIGN_M2 = 1.0
 
     # ── Model ─────────────────────────────────────────────────────────── #
     HIDDEN_DIM = 512
-    N_BLOCKS = 6
+    N_BLOCKS = 8
 
     # ── Loss weights ──────────────────────────────────────────────────── #
-    W_ENERGY = 1.0
-    W_FX = 10.0
-    W_M1 = 1.0
-    W_M2 = 1.0
-
-    # Optional smoothness penalty on Hessian magnitude
-    LAMBDA_STIFF = 0.0
-
+    W_ENERGY_LABEL = 50.0
+    W_ENERGY_THETA = 1.0
+    W_SCALAR = 1.0
+    W_LSTSQ = 1.0
+    W_EQ = 1.0
+    FX_WEIGHT = 10.0
+    FY_WEIGHT = 0.5
+    M_WEIGHT = 10.0
     EI = 1.0
+    LAMBDA_STIFF = 0.2
 
     # ── Training ──────────────────────────────────────────────────────── #
     BATCH_SIZE = 32768
-    EPOCHS = 50
+    EPOCHS = 25
     LR = 3e-4
     WEIGHT_DECAY = 1e-5
     GRAD_CLIP = 1.0
@@ -55,7 +55,7 @@ class Config:
     PATIENCE = 8
     MIN_DELTA = 1e-4
 
-    # ── Device — auto detected ─────────────────────────────────────────── #
+    # ── Device ────────────────────────────────────────────────────────── #
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     USE_GPU = torch.cuda.is_available()
     MIXED_PREC = False

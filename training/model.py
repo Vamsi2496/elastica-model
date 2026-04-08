@@ -4,7 +4,6 @@ from config import Config
 
 
 class ResBlock(nn.Module):
-    """Pre-activation residual block with LayerNorm + GELU."""
     def __init__(self, dim):
         super().__init__()
         self.block = nn.Sequential(
@@ -19,18 +18,6 @@ class ResBlock(nn.Module):
 
 
 class ElasticaEnergyNet(nn.Module):
-    """
-    Energy surrogate:
-    (phi1, phi2, d) → U
-
-    Derived by autograd:
-      dU/dphi1 -> M_left  (up to sign convention)
-      dU/dphi2 -> M_right (up to sign convention)
-      dU/dd    -> Fx      (up to sign convention)
-
-    Stiffness matrix K = Hessian(U) wrt [phi1, phi2, d].
-    """
-
     def __init__(self, hidden=Config.HIDDEN_DIM, n_blocks=Config.N_BLOCKS):
         super().__init__()
         self.embed = nn.Sequential(
@@ -70,7 +57,7 @@ class ElasticaEnergyNet(nn.Module):
 
     def hessian(self, x):
         x = x.detach().requires_grad_(True)
-        U, g = self.energy_and_grad(x, create_graph=True)
+        _, g = self.energy_and_grad(x, create_graph=True)
         B = x.shape[0]
         H = torch.zeros(B, 3, 3, device=x.device, dtype=x.dtype)
         for i in range(3):

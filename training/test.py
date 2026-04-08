@@ -5,26 +5,13 @@ import json
 from config import Config
 from dataset import get_loaders
 from model import ElasticaEnergyNet
+from loss import ElasticaLoss
 
 
 def r2(y_true, y_pred):
     ss_res = np.sum((y_true - y_pred) ** 2)
     ss_tot = np.sum((y_true - y_true.mean()) ** 2)
     return 1.0 - ss_res / (ss_tot + 1e-12)
-
-
-def to_physical_grads(g_norm, dataset):
-    u_std = dataset.y_std[0]
-    scales = u_std / dataset.x_std
-    out = g_norm * scales[None, :]
-    return out
-
-
-def hessian_to_physical(H_norm, dataset):
-    u_std = dataset.y_std[0]
-    scales = u_std / dataset.x_std
-    S = scales[:, None] * scales[None, :]
-    return H_norm * S[None, :, :]
 
 
 def test():
@@ -39,43 +26,57 @@ def test():
     print(f"Loaded epoch {ckpt['epoch']} val_loss={ckpt['val_loss']:.6f}")
 
     _, _, test_loader, dataset = get_loaders(Config.HDF5_PATH, compute_stats=False)
-    y_mean = dataset.y_mean
-    y_std = dataset.y_std
 
-    pred_all, true_all = [], []
+    pred_all, true_auto, true_theta = [], [], []
 
-    for x, y in test_loader:
+    for x, y, arc, theta in test_loader:
         x_req = x.detach().requires_grad_(True)
         U = model(x_req)
         g = torch.autograd.grad(U.sum(), x_req, create_graph=False)[0]
 
-        fx_phys = Config.SIGN_FX * to_physical_grads(g.detach().cpu().numpy(), dataset)[:, 2]
-        m1_phys = Config.SIGN_M1 * to_physical_grads(g.detach().cpu().numpy(), dataset)[:, 0]
-        m2_phys = Config.SIGN_M2 * to_physical_grads(g.detach().cpu().numpy(), dataset)[:, 1]
-        U_phys = (U.detach().cpu().numpy() * y_std[0]) + y_mean[0]
+        x_phys = x.detach().cpu().numpy() * dataset.x_std[None, :] + dataset.x_mean[None, :]
+        d_phys = np.clip(x_phys[:, 2], 1e-8, None)
+        scale = dataset.y_std[0] / dataset.x_std
+        g_phys = g.detach().cpu().numpy() * scale[None, :]
 
-        pred = np.stack([U_phys, fx_phys, m1_phys, m2_phys], axis=1)
-        true = (y.detach().cpu().numpy() * y_std[None, :]) + y_mean[None, :]
+        U_phys = (U.detach().cpu().numpy() * dataset.y_std[0]) + dataset.y_mean[0]
+        ML_phys = Config.SIGN_M1 * g_phys[:, 0]
+        MR_phys = Config.SIGN_M2 * g_phys[:, 1]
+        Fx_phys = Config.SIGN_FX * g_phys[:, 2]
+        Fy_phys = (ML_phys - MR_phys) / d_phys
 
-        pred_all.append(pred)
-        true_all.append(true)
+        pred_all.append(np.stack([U_phys, Fx_phys, Fy_phys, ML_phys, MR_phys], axis=1))
+        true_auto.append((y.detach().cpu().numpy() * dataset.y_std[None, :]) + dataset.y_mean[None, :])
 
-    SP = np.concatenate(pred_all)
-    ST = np.concatenate(true_all)
+        theta_phys = theta * dataset.t_std + dataset.t_mean
+        arc_phys = arc * dataset.arc_max
+        Fx_t, Fy_t, ML_t, MR_t, _, _ = ElasticaLoss.derive_from_theta(theta_phys, arc_phys)
+        U_t = ElasticaLoss.energy_from_theta(theta_phys, arc_phys)
+        true_theta.append(torch.stack([U_t, Fx_t, Fy_t, ML_t, MR_t], dim=1).detach().cpu().numpy())
 
-    print("=" * 72)
-    print(f"{'Output':<12} {'R²':>9} {'RMSE':>13} {'MaxErr':>13}")
-    print("=" * 72)
+    pred_all = np.concatenate(pred_all)
+    true_auto = np.concatenate(true_auto)
+    true_theta = np.concatenate(true_theta)
 
-    results = {}
+    print("=" * 110)
+    print(f"{'Output':<12} {'AUTO R²':>9} {'AUTO RMSE':>12} {'AUTO MaxErr':>12} {'Θ/arc R²':>9} {'Θ/arc RMSE':>12} {'Θ/arc MaxErr':>12}")
+    print("=" * 110)
+
+    results = {"AUTO": {}, "theta_arc": {}}
     for i, name in enumerate(Config.SCALAR_NAMES):
-        r2_val = r2(ST[:, i], SP[:, i])
-        rmse = np.sqrt(np.mean((ST[:, i] - SP[:, i]) ** 2))
-        maxerr = np.max(np.abs(ST[:, i] - SP[:, i]))
-        print(f"{name:<12} {r2_val:>9.5f} {rmse:>13.4e} {maxerr:>13.4e}")
-        results[name] = {"R2": float(r2_val), "RMSE": float(rmse), "MaxErr": float(maxerr)}
+        r2_a = r2(true_auto[:, i], pred_all[:, i])
+        rmse_a = np.sqrt(np.mean((true_auto[:, i] - pred_all[:, i]) ** 2))
+        maxerr_a = np.max(np.abs(true_auto[:, i] - pred_all[:, i]))
 
-    print("=" * 72)
+        r2_t = r2(true_theta[:, i], pred_all[:, i])
+        rmse_t = np.sqrt(np.mean((true_theta[:, i] - pred_all[:, i]) ** 2))
+        maxerr_t = np.max(np.abs(true_theta[:, i] - pred_all[:, i]))
+
+        print(f"{name:<12} {r2_a:>9.5f} {rmse_a:>12.4e} {maxerr_a:>12.4e} {r2_t:>9.5f} {rmse_t:>12.4e} {maxerr_t:>12.4e}")
+        results["AUTO"][name] = {"R2": float(r2_a), "RMSE": float(rmse_a), "MaxErr": float(maxerr_a)}
+        results["theta_arc"][name] = {"R2": float(r2_t), "RMSE": float(rmse_t), "MaxErr": float(maxerr_t)}
+
+    print("=" * 110)
     with open("test_results.json", "w") as f:
         json.dump(results, f, indent=2)
     print("Saved → test_results.json")

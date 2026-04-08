@@ -32,9 +32,8 @@ class EnergyPredictor:
         return g * scale[None, :]
 
     def _hess_to_phys(self, H):
-        s = self.y_std[0] / self.x_std
-        S = s[:, None] * s[None, :]
-        return H * S[None, :, :]
+        scale = self.y_std[0] / self.x_std
+        return H * (scale[:, None] * scale[None, :])[None, :, :]
 
     def query(self, phi1, phi2, d, compute_stiffness=True):
         x = self._norm_x(phi1, phi2, d).detach().requires_grad_(True)
@@ -43,12 +42,19 @@ class EnergyPredictor:
 
         U_phys = (U.detach().cpu().numpy() * self.y_std[0]) + self.y_mean[0]
         g_phys = self._grad_to_phys(g.detach().cpu().numpy())
+        d_phys = max(float(np.asarray(d).ravel()[0]), 1e-8)
+
+        ML = float(Config.SIGN_M1 * g_phys[0, 0])
+        MR = float(Config.SIGN_M2 * g_phys[0, 1])
+        Fx = float(Config.SIGN_FX * g_phys[0, 2])
+        Fy = float((ML - MR) / d_phys)
 
         out = {
             "Energy": float(U_phys[0]),
-            "Fx": float(Config.SIGN_FX * g_phys[0, 2]),
-            "M_left": float(Config.SIGN_M1 * g_phys[0, 0]),
-            "M_right": float(Config.SIGN_M2 * g_phys[0, 1]),
+            "Fx": Fx,
+            "Fy": Fy,
+            "M_left": ML,
+            "M_right": MR,
         }
 
         if compute_stiffness:
@@ -56,20 +62,17 @@ class EnergyPredictor:
             for i in range(3):
                 row = torch.autograd.grad(g[:, i].sum(), x, retain_graph=(i < 2))[0]
                 H[:, i, :] = row.detach().cpu().numpy()
-            H_phys = self._hess_to_phys(H)[0]
-            out["K"] = H_phys
+            out["K"] = self._hess_to_phys(H)[0]
         return out
-
 predictor = EnergyPredictor()
 
-# input values
-phi1 = 0
-phi2 = 0
-d = 0.982
+test_cases = [
+    (0, 0, 0.7),
+    (0, 0, 0.985),
+    (0, 0, 0.982),
+]
 
-# query
-result = predictor.query(phi1, phi2, d)
-
-print(result)
-Fy=(result["M_right"]-result["M_left"])/d
-print(Fy)
+for phi1, phi2, d in test_cases:
+    res = predictor.query(phi1, phi2, d, compute_stiffness=False)
+    print(f"\nInput: {phi1}, {phi2}, {d}")
+    print(res)
