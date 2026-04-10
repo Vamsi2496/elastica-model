@@ -4,6 +4,7 @@ from config import Config
 
 
 class ResBlock(nn.Module):
+    """Pre-activation residual block with LayerNorm + GELU."""
     def __init__(self, dim):
         super().__init__()
         self.block = nn.Sequential(
@@ -18,6 +19,7 @@ class ResBlock(nn.Module):
 
 
 class ElasticaEnergyNet(nn.Module):
+    """Energy model: (phi1, phi2, d) -> U (scalar, unconstrained)."""
     def __init__(self, hidden=Config.HIDDEN_DIM, n_blocks=Config.N_BLOCKS):
         super().__init__()
         self.embed = nn.Sequential(
@@ -31,7 +33,6 @@ class ElasticaEnergyNet(nn.Module):
             nn.Linear(256, 128), nn.GELU(),
             nn.Linear(128, 1),
         )
-        self.softplus = nn.Softplus(beta=1.0)
         self._init_weights()
 
     def _init_weights(self):
@@ -42,10 +43,13 @@ class ElasticaEnergyNet(nn.Module):
                     nn.init.zeros_(m.bias)
 
     def forward(self, x):
+        """x: (B, 3) normalized -> U: (B,) raw energy (unconstrained)."""
         z = self.encoder(self.embed(x))
-        return self.softplus(self.head(z)).squeeze(-1)
+        return self.head(z).squeeze(-1)
 
     def energy_and_grad(self, x, create_graph=False):
+        """Returns energy U and gradients dU/dx."""
+        x = x.detach().requires_grad_(True)
         U = self.forward(x)
         g = torch.autograd.grad(
             outputs=U.sum(),
@@ -56,6 +60,7 @@ class ElasticaEnergyNet(nn.Module):
         return U, g
 
     def hessian(self, x):
+        """Returns 3x3 Hessian d²U / dx_i dx_j."""
         x = x.detach().requires_grad_(True)
         _, g = self.energy_and_grad(x, create_graph=True)
         B = x.shape[0]

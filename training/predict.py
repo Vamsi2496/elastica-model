@@ -44,8 +44,8 @@ class EnergyPredictor:
         g_phys = self._grad_to_phys(g.detach().cpu().numpy())
         d_phys = max(float(np.asarray(d).ravel()[0]), 1e-8)
 
-        ML = float(Config.SIGN_M1 * g_phys[0, 0])
-        MR = float(Config.SIGN_M2 * g_phys[0, 1])
+        ML = float(Config.SIGN_M1 * g_phys[0, 0])* ((180/np.pi))
+        MR = float(Config.SIGN_M2 * g_phys[0, 1])* ((180/np.pi))
         Fx = float(Config.SIGN_FX * g_phys[0, 2])
         Fy = float((ML - MR) / d_phys)
 

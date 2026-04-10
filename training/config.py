@@ -26,8 +26,8 @@ class Config:
 
     # stored labels = SIGN * dU/dq
     SIGN_FX = -1.0
-    SIGN_M1 = 1.0
-    SIGN_M2 = 1.0
+    SIGN_M1 =  1.0
+    SIGN_M2 = -1.0
 
     # ── Model ─────────────────────────────────────────────────────────── #
     HIDDEN_DIM = 512
@@ -40,14 +40,14 @@ class Config:
     W_LSTSQ = 1.0
     W_EQ = 1.0
     FX_WEIGHT = 10.0
-    FY_WEIGHT = 0.5
+    FY_WEIGHT = 10.0
     M_WEIGHT = 10.0
     EI = 1.0
     LAMBDA_STIFF = 0.2
 
     # ── Training ──────────────────────────────────────────────────────── #
     BATCH_SIZE = 32768
-    EPOCHS = 25
+    EPOCHS = 150
     LR = 3e-4
     WEIGHT_DECAY = 1e-5
     GRAD_CLIP = 1.0

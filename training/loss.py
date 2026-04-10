@@ -1,6 +1,8 @@
 import torch
 import torch.nn.functional as F
+import numpy as np
 from config import Config
+
 
 
 class ElasticaLoss:
@@ -113,8 +115,8 @@ class ElasticaLoss:
         loss_energy_label = F.mse_loss(U_pred_norm, energy_true)
         loss_energy_theta = F.mse_loss(U_pred_norm, U_theta_norm)
 
-        ML_phys = Config.SIGN_M1 * self._grad_norm_to_phys(g[:, 0], 0, device)
-        MR_phys = Config.SIGN_M2 * self._grad_norm_to_phys(g[:, 1], 1, device)
+        ML_phys = Config.SIGN_M1 * self._grad_norm_to_phys(g[:, 0], 0, device) * ((180/np.pi))
+        MR_phys = Config.SIGN_M2 * self._grad_norm_to_phys(g[:, 1], 1, device)  * ((180/np.pi))
         Fx_phys = Config.SIGN_FX * self._grad_norm_to_phys(g[:, 2], 2, device)
         Fy_phys = (ML_phys - MR_phys) / d_phys
 
@@ -130,27 +132,6 @@ class ElasticaLoss:
             w[2] * F.mse_loss(m1_pred, m1_true) +
             w[3] * F.mse_loss(m2_pred, m2_true)
         )
-
-        Fx_l, Fy_l, ML_l, MR_l, M_true, _ = self.derive_from_theta(theta_phys, arc_phys)
-        fx_l_true = self._phys_to_norm(Fx_l, 1, device)
-        fy_l_true = self._phys_to_norm(Fy_l, 2, device)
-        m1_l_true = self._phys_to_norm(ML_l, 3, device)
-        m2_l_true = self._phys_to_norm(MR_l, 4, device)
-        loss_lstsq = (
-            w[0] * F.mse_loss(fx_pred, fx_l_true) +
-            w[1] * F.mse_loss(fy_pred, fy_l_true) +
-            w[2] * F.mse_loss(m1_pred, m1_l_true) +
-            w[3] * F.mse_loss(m2_pred, m2_l_true)
-        )
-
-        dM_ds = self._deriv2(M_true, arc_phys)
-        theta_int = theta_phys[:, 1:-1]
-        dM_int = dM_ds[:, 1:-1]
-        rhs = (
-            Fy_phys.unsqueeze(1) * torch.cos(theta_int)
-            - Fx_phys.unsqueeze(1) * torch.sin(theta_int)
-        )
-        loss_eq = F.mse_loss(dM_int, rhs)
 
         loss_stiff = torch.tensor(0.0, device=device)
         if need_stiffness and Config.LAMBDA_STIFF > 0.0:
@@ -170,8 +151,6 @@ class ElasticaLoss:
             Config.W_ENERGY_LABEL * loss_energy_label +
             Config.W_ENERGY_THETA * loss_energy_theta +
             Config.W_SCALAR * loss_scalar +
-            Config.W_LSTSQ * loss_lstsq +
-            Config.W_EQ * loss_eq +
             Config.LAMBDA_STIFF * loss_stiff
         )
 
@@ -179,8 +158,6 @@ class ElasticaLoss:
             "energy_label": loss_energy_label.item(),
             "energy_theta": loss_energy_theta.item(),
             "scalar": loss_scalar.item(),
-            "lstsq": loss_lstsq.item(),
-            "equilibrium": loss_eq.item(),
             "stiffness": loss_stiff.item(),
             "total": total.item(),
         }

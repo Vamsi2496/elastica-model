@@ -16,6 +16,7 @@ from .config import PYTHON26, AUTO_DIR
 RADIUS_D    = 0.01
 RADIUS_PHI1 = 1.0
 RADIUS_PHI2 = 1.0
+n_hits=10
 NDIM = 4
 NPAR = 9
 
@@ -55,6 +56,7 @@ def _copy_data_files_to(base_dir):
         print(f"  ✓ Copied to working dir: {copied}")
 
 def _cleanup_auto_files(base_dir):
+    time.sleep(1)
     for prefix in ["b", "s", "d"]:
         for name in ["curr_data"]:
             fn = os.path.join(base_dir, f"{prefix}.{name}")
@@ -385,7 +387,6 @@ def run_at_point(phi1, phi2, d,
     d_values      : list[float]
     hdf5_indices  : list[int]    new row indices written (empty if not converged)
     """
-    n_hits=3
     base_dir = base_dir or os.path.abspath(os.getcwd())
     _cleanup_auto_files(base_dir)
     _copy_data_files_to(base_dir) 

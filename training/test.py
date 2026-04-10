@@ -40,8 +40,8 @@ def test():
         g_phys = g.detach().cpu().numpy() * scale[None, :]
 
         U_phys = (U.detach().cpu().numpy() * dataset.y_std[0]) + dataset.y_mean[0]
-        ML_phys = Config.SIGN_M1 * g_phys[:, 0]
-        MR_phys = Config.SIGN_M2 * g_phys[:, 1]
+        ML_phys = Config.SIGN_M1 * g_phys[:, 0] * ((180/np.pi))
+        MR_phys = Config.SIGN_M2 * g_phys[:, 1] * ((180/np.pi))
         Fx_phys = Config.SIGN_FX * g_phys[:, 2]
         Fy_phys = (ML_phys - MR_phys) / d_phys
 
