@@ -128,7 +128,7 @@ class ElasticaLoss:
         w = self.scalar_weights.to(device)
         loss_scalar = (
             w[0] * F.mse_loss(fx_pred, fx_true) +
-            w[1] * F.mse_loss(fy_pred, fy_true) +
+            #w[1] * F.mse_loss(fy_pred, fy_true) +
             w[2] * F.mse_loss(m1_pred, m1_true) +
             w[3] * F.mse_loss(m2_pred, m2_true)
         )
@@ -149,14 +149,14 @@ class ElasticaLoss:
 
         total = (
             Config.W_ENERGY_LABEL * loss_energy_label +
-            Config.W_ENERGY_THETA * loss_energy_theta +
+            #Config.W_ENERGY_THETA * loss_energy_theta +
             Config.W_SCALAR * loss_scalar +
             Config.LAMBDA_STIFF * loss_stiff
         )
 
         return total, {
             "energy_label": loss_energy_label.item(),
-            "energy_theta": loss_energy_theta.item(),
+            #"energy_theta": loss_energy_theta.item(),
             "scalar": loss_scalar.item(),
             "stiffness": loss_stiff.item(),
             "total": total.item(),

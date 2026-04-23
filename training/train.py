@@ -39,8 +39,8 @@ def train():
 
     criterion = ElasticaLoss(dataset)
     optimizer = optim.AdamW(model.parameters(), lr=Config.LR, weight_decay=Config.WEIGHT_DECAY)
-    scheduler = OneCycleLR(optimizer, max_lr=Config.LR, steps_per_epoch=len(train_loader), epochs=Config.EPOCHS, pct_start=0.1)
-
+    #scheduler = OneCycleLR(optimizer, max_lr=Config.LR, steps_per_epoch=len(train_loader), epochs=Config.EPOCHS, pct_start=0.1)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, min_lr=1e-6, threshold=1e-4)
     history = {"train": [], "val": [], "breakdown": []}
     best_val = float("inf")
     no_improve_count = 0
@@ -57,7 +57,7 @@ def train():
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), Config.GRAD_CLIP)
             optimizer.step()
-            scheduler.step()
+            #scheduler.step()
             epoch_loss += loss.item()
 
             if step % Config.LOG_INTERVAL == 0:
@@ -65,13 +65,14 @@ def train():
                     f" Ep {epoch:3d} | step {step:4d} | "
                     f"total={bd['total']:.5f} | "
                     f"Ulab={bd['energy_label']:.5f} | "
-                    f"Utheta={bd['energy_theta']:.5f} | "
+                    #f"Utheta={bd['energy_theta']:.5f} | "
                     f"scalar={bd['scalar']:.5f} | "
                     f"Kreg={bd['stiffness']:.5f} | "
                     f"lr={scheduler.get_last_lr()[0]:.2e}"
                 )
 
         val_loss, val_bd = evaluate(model, val_loader, criterion)
+        scheduler.step(val_loss)
         print_validation_sample(model, val_loader, dataset, sample_idx=0)
         avg_train = epoch_loss / len(train_loader)
         elapsed = time.time() - t0

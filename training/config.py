@@ -34,9 +34,9 @@ class Config:
     N_BLOCKS = 8
 
     # ── Loss weights ──────────────────────────────────────────────────── #
-    W_ENERGY_LABEL = 50.0
+    W_ENERGY_LABEL = 5.0
     W_ENERGY_THETA = 1.0
-    W_SCALAR = 1.0
+    W_SCALAR = 5.0
     W_LSTSQ = 1.0
     W_EQ = 1.0
     FX_WEIGHT = 10.0
@@ -53,7 +53,7 @@ class Config:
     GRAD_CLIP = 1.0
     LOG_INTERVAL = 20
     PATIENCE = 8
-    MIN_DELTA = 1e-4
+    MIN_DELTA = 1e-6
 
     # ── Device ────────────────────────────────────────────────────────── #
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
