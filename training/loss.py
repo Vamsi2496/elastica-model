@@ -96,7 +96,11 @@ class ElasticaLoss:
         device = x.device
         x_req = x.detach().requires_grad_(True)
 
-        U_pred_norm, g = model.energy_and_grad(x_req, create_graph=True)
+        #U_pred_norm, g = model.energy_and_grad(x_req, create_graph=True)
+        U_pred_norm = model(x_req)
+        g = torch.autograd.grad(outputs=U_pred_norm.sum(), inputs=x_req,create_graph=True,
+        retain_graph=True,
+        )[0]
         x_phys = self._dn_x(x, device)
         d_phys = x_phys[:, 2].clamp(min=1e-8)
 
@@ -118,7 +122,7 @@ class ElasticaLoss:
         ML_phys = Config.SIGN_M1 * self._grad_norm_to_phys(g[:, 0], 0, device) * ((180/np.pi))
         MR_phys = Config.SIGN_M2 * self._grad_norm_to_phys(g[:, 1], 1, device)  * ((180/np.pi))
         Fx_phys = Config.SIGN_FX * self._grad_norm_to_phys(g[:, 2], 2, device)
-        Fy_phys = (ML_phys - MR_phys) / d_phys
+        Fy_phys = (MR_phys - ML_phys) / d_phys
 
         fx_pred = self._phys_to_norm(Fx_phys, 1, device)
         fy_pred = self._phys_to_norm(Fy_phys, 2, device)
@@ -128,7 +132,7 @@ class ElasticaLoss:
         w = self.scalar_weights.to(device)
         loss_scalar = (
             w[0] * F.mse_loss(fx_pred, fx_true) +
-            #w[1] * F.mse_loss(fy_pred, fy_true) +
+            w[1] * F.mse_loss(fy_pred, fy_true) +
             w[2] * F.mse_loss(m1_pred, m1_true) +
             w[3] * F.mse_loss(m2_pred, m2_true)
         )
@@ -142,7 +146,10 @@ class ElasticaLoss:
                     inputs=x_req,
                     create_graph=True,
                     retain_graph=True,
+                    allow_unused=True,
                 )[0]
+                if row is None:
+                    row = torch.zeros_like(x_req)
                 H_rows.append(row.unsqueeze(1))
             H = torch.cat(H_rows, dim=1)
             loss_stiff = (H ** 2).mean()

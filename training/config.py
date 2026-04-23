@@ -31,19 +31,19 @@ class Config:
 
     # ── Model ─────────────────────────────────────────────────────────── #
     HIDDEN_DIM = 512
-    N_BLOCKS = 8
+    N_BLOCKS = 2
 
     # ── Loss weights ──────────────────────────────────────────────────── #
-    W_ENERGY_LABEL = 5.0
+    W_ENERGY_LABEL = 10.0
     W_ENERGY_THETA = 1.0
-    W_SCALAR = 5.0
+    W_SCALAR = 1.0
     W_LSTSQ = 1.0
     W_EQ = 1.0
-    FX_WEIGHT = 10.0
-    FY_WEIGHT = 10.0
-    M_WEIGHT = 10.0
+    FX_WEIGHT = 1.0
+    FY_WEIGHT = 0.25
+    M_WEIGHT = 1.0
     EI = 1.0
-    LAMBDA_STIFF = 0.2
+    LAMBDA_STIFF = 0.0
 
     # ── Training ──────────────────────────────────────────────────────── #
     BATCH_SIZE = 32768

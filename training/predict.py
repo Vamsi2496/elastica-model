@@ -67,9 +67,9 @@ class EnergyPredictor:
 predictor = EnergyPredictor()
 
 test_cases = [
-    (0, 0, 0.7),
-    (0, 0, 0.985),
-    (0, 0, 0.982),
+    (0, 0, 0.82),
+    (-12.0765, 20.9235, 0.95),
+    (0, 0, 0.63),
 ]
 
 for phi1, phi2, d in test_cases:

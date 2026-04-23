@@ -40,7 +40,7 @@ def train():
     criterion = ElasticaLoss(dataset)
     optimizer = optim.AdamW(model.parameters(), lr=Config.LR, weight_decay=Config.WEIGHT_DECAY)
     #scheduler = OneCycleLR(optimizer, max_lr=Config.LR, steps_per_epoch=len(train_loader), epochs=Config.EPOCHS, pct_start=0.1)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, min_lr=1e-6, threshold=1e-4)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=6, min_lr=1e-6, threshold=1e-4)
     history = {"train": [], "val": [], "breakdown": []}
     best_val = float("inf")
     no_improve_count = 0
@@ -51,8 +51,8 @@ def train():
         t0 = time.time()
 
         for step, (x, y, arc, theta) in enumerate(train_loader):
-            loss, bd = criterion(model, x, y, arc, theta, need_stiffness=False)
-
+            use_stiffness = (epoch > 5) and (step % 10 == 0)
+            loss, bd = criterion(model, x, y, arc, theta, need_stiffness=use_stiffness)
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), Config.GRAD_CLIP)
@@ -68,7 +68,7 @@ def train():
                     #f"Utheta={bd['energy_theta']:.5f} | "
                     f"scalar={bd['scalar']:.5f} | "
                     f"Kreg={bd['stiffness']:.5f} | "
-                    f"lr={scheduler.get_last_lr()[0]:.2e}"
+                    f"lr={optimizer.param_groups[0]['lr']:.2e}"
                 )
 
         val_loss, val_bd = evaluate(model, val_loader, criterion)
@@ -130,7 +130,7 @@ def print_validation_sample(model, val_loader, dataset, sample_idx=0):
     ML_phys = Config.SIGN_M1 * g_phys[:, 0] * ((180/np.pi))
     MR_phys = Config.SIGN_M2 * g_phys[:, 1] * ((180/np.pi))
     Fx_phys = Config.SIGN_FX * g_phys[:, 2]
-    Fy_phys = (ML_phys - MR_phys) / d_phys
+    Fy_phys = (MR_phys - ML_phys) / d_phys
 
     auto_phys = (y.detach().cpu().numpy() * dataset.y_std[None, :]) + dataset.y_mean[None, :]
 
