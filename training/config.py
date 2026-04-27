@@ -28,30 +28,30 @@ class Config:
     SIGN_M2 = -1.0
 
     INPUT_DIM = 3
-    HIDDEN_LAYERS = [256]
+    HIDDEN_LAYERS = [512, 512]
     ACTIVATION = "gelu"
     USE_LAYER_NORM = False
     DROPOUT = 0.0
 
-    W_ENERGY_LABEL = 1.0
-    W_ENERGY_THETA = 0.0
-    W_SCALAR = 20.0
+    W_ENERGY_LABEL = 5.0
+    W_ENERGY_THETA = 1.0
+    W_SCALAR = 5.0
     FX_WEIGHT = 1.0
-    FY_WEIGHT = 1.0
+    FY_WEIGHT = 0.0
     M_WEIGHT = 1.0
     EI = 1.0
     LAMBDA_STIFF = 0.0
 
-    BATCH_SIZE = 16384
+    BATCH_SIZE = 8192
     EPOCHS = 150
-    LR = 3e-4
+    LR = 1e-3
     WEIGHT_DECAY = 1e-5
     GRAD_CLIP = 1.0
     LOG_INTERVAL = 20
     PATIENCE = 10
     MIN_DELTA = 1e-6
     LR_FACTOR = 0.5
-    LR_PATIENCE = 5
+    LR_PATIENCE = 4
     MIN_LR = 1e-6
     LR_THRESHOLD = 1e-4
 

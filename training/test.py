@@ -16,6 +16,7 @@ def r2(y_true, y_pred):
 
 
 def test():
+    start=time.time()
     device = Config.DEVICE
     print(f"Device: {device}")
     ckpt = torch.load(Config.CKPT_BEST, map_location=device)
@@ -51,7 +52,7 @@ def test():
     true_theta = np.concatenate(true_theta)
     print("=" * 110)
     print(f"{'Output':<12} {'AUTO R²':>9} {'AUTO RMSE':>12} {'AUTO MaxErr':>12} ")
-    print("=" * 110)
+    print("=" * 70)
     results = {"AUTO": {}}
     for i, name in enumerate(Config.SCALAR_NAMES):
         r2_a = r2(true_auto[:, i], pred_all[:, i])
@@ -63,7 +64,7 @@ def test():
         print(f"{name:<12} {r2_a:>9.5f} {rmse_a:>12.4e} {maxerr_a:>12.4e} ")
         results["AUTO"][name] = {"R2": float(r2_a), "RMSE": float(rmse_a), "MaxErr": float(maxerr_a)}
         
-    print("=" * 110)
+    print("=" * 70)
     with open("test_results.json", "w") as f:
         json.dump(results, f, indent=2)
     print("Saved → test_results.json")
@@ -71,5 +72,4 @@ def test():
 
 
 if __name__ == "__main__":
-    start=time.time()
     test()
