@@ -38,8 +38,8 @@ ax.legend()
 ax.grid(True, alpha=0.3)
 
 ax = axes[1]
-ax.plot(epochs[mid-1:], train_loss[mid-1:], label="Train", color="steelblue", linewidth=2)
-ax.plot(epochs[mid-1:], val_loss[mid-1:], label="Val", color="tomato", linewidth=2, linestyle="--")
+ax.plot(epochs[mid - 1:], train_loss[mid - 1:], label="Train", color="steelblue", linewidth=2)
+ax.plot(epochs[mid - 1:], val_loss[mid - 1:], label="Val", color="tomato", linewidth=2, linestyle="--")
 ax.set_xlabel("Epoch")
 ax.set_ylabel("Total Loss")
 ax.set_title(f"Zoomed — Last {len(epochs) - mid + 1} Epochs")
@@ -53,16 +53,15 @@ print("Saved → plots/loss_curves.png")
 
 # ------------------------------------------------------------
 # 2) Validation breakdown curves
+#    Excluding energy_theta and stiffness/K-reg
 # ------------------------------------------------------------
 breakdown_keys = {
     "energy": ("Energy label", "black"),
-    "energy_theta": ("Energy theta", "dimgray"),
     "Fx": ("Fx", "steelblue"),
     "Fy": ("Fy", "darkorange"),
     "M_left": ("M_left", "green"),
     "M_right": ("M_right", "purple"),
     "scalar": ("Scalar total", "gray"),
-    "stiffness": ("Stiffness reg", "crimson"),
     "total": ("Total", "brown"),
 }
 
@@ -87,7 +86,7 @@ ax = axes[1]
 for key in available_keys:
     label, color = breakdown_keys[key]
     vals = [bd.get(key, 0.0) for bd in breakdown]
-    ax.plot(epochs[mid-1:], vals[mid-1:], label=label, color=color, linewidth=1.8)
+    ax.plot(epochs[mid - 1:], vals[mid - 1:], label=label, color=color, linewidth=1.8)
 ax.set_xlabel("Epoch")
 ax.set_ylabel("Loss Value")
 ax.set_title(f"Zoomed — Last {len(epochs) - mid + 1} Epochs")
@@ -176,17 +175,17 @@ print("Saved → plots/test_errors.png")
 
 # ------------------------------------------------------------
 # 5) Per-component convergence
+#    Excluding energy_theta and stiffness/K-reg
 # ------------------------------------------------------------
 fig, ax = plt.subplots(figsize=(11, 4))
 for key, color, label in [
     ("energy", "black", "Energy label"),
-    ("energy_theta", "dimgray", "Energy theta"),
     ("Fx", "steelblue", "Fx"),
     ("Fy", "darkorange", "Fy"),
     ("M_left", "green", "M_left"),
     ("M_right", "purple", "M_right"),
     ("scalar", "gray", "Scalar"),
-    ("stiffness", "crimson", "K-reg"),
+    ("total", "brown", "Total"),
 ]:
     if any(key in bd for bd in breakdown):
         vals = [bd.get(key, 0.0) for bd in breakdown]

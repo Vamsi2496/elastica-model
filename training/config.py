@@ -34,16 +34,16 @@ class Config:
     DROPOUT = 0.0
 
     W_ENERGY_LABEL = 1.0
-    W_ENERGY_THETA = 1.0
     W_SCALAR = 1.0
-    FX_WEIGHT = 10.0
+    FX_WEIGHT = 50.0
     FY_WEIGHT = 0.0
-    M_WEIGHT = 10.0
+    M_WEIGHT = 30.0
     EI = 1.0
+    W_ENERGY_THETA = 0.0
     LAMBDA_STIFF = 0.0
 
     BATCH_SIZE = 8192
-    EPOCHS = 150
+    EPOCHS = 100
     LR = 1e-3
     WEIGHT_DECAY = 1e-5
     GRAD_CLIP = 1.0
