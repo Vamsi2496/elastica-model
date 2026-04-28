@@ -35,9 +35,9 @@ class Config:
 
     W_ENERGY_LABEL = 50.0
     W_SCALAR = 1.0
-    FX_WEIGHT = 2.0
+    FX_WEIGHT = 1.0
     FY_WEIGHT = 0.0
-    M_WEIGHT = 2.0
+    M_WEIGHT = 1.0
     EI = 1.0
     W_ENERGY_THETA = 0.0
     LAMBDA_STIFF = 0.0
