@@ -56,7 +56,7 @@ print("Saved → plots/loss_curves.png")
 #    Excluding energy_theta and stiffness/K-reg
 # ------------------------------------------------------------
 breakdown_keys = {
-    "energy": ("Energy label", "black"),
+    "energy": ("Energy", "black"),
     "Fx": ("Fx", "steelblue"),
     "Fy": ("Fy", "darkorange"),
     "M_left": ("M_left", "green"),
@@ -179,7 +179,7 @@ print("Saved → plots/test_errors.png")
 # ------------------------------------------------------------
 fig, ax = plt.subplots(figsize=(11, 4))
 for key, color, label in [
-    ("energy", "black", "Energy label"),
+    ("energy", "black", "Energy "),
     ("Fx", "steelblue", "Fx"),
     ("Fy", "darkorange", "Fy"),
     ("M_left", "green", "M_left"),
