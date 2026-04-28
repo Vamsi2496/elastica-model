@@ -33,23 +33,23 @@ class Config:
     USE_LAYER_NORM = False
     DROPOUT = 0.0
 
-    W_ENERGY_LABEL = 1.0
+    W_ENERGY_LABEL = 50.0
     W_SCALAR = 1.0
-    FX_WEIGHT = 50.0
+    FX_WEIGHT = 2.0
     FY_WEIGHT = 0.0
-    M_WEIGHT = 30.0
+    M_WEIGHT = 1.0
     EI = 1.0
     W_ENERGY_THETA = 0.0
     LAMBDA_STIFF = 0.0
 
     BATCH_SIZE = 8192
-    EPOCHS = 100
+    EPOCHS = 50
     LR = 1e-3
     WEIGHT_DECAY = 1e-5
     GRAD_CLIP = 1.0
     LOG_INTERVAL = 20
     PATIENCE = 10
-    MIN_DELTA = 1e-6
+    MIN_DELTA = 1e-4
     LR_FACTOR = 0.5
     LR_PATIENCE = 4
     MIN_LR = 1e-6
