@@ -50,7 +50,7 @@ def test():
     pred_all = np.concatenate(pred_all)
     true_auto = np.concatenate(true_auto)
     true_theta = np.concatenate(true_theta)
-    print("=" * 110)
+    print("=" * 70)
     print(f"{'Output':<12} {'AUTO R²':>9} {'AUTO RMSE':>12} {'AUTO MaxErr':>12} ")
     print("=" * 70)
     results = {"AUTO": {}}

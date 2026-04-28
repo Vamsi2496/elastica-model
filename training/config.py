@@ -33,12 +33,12 @@ class Config:
     USE_LAYER_NORM = False
     DROPOUT = 0.0
 
-    W_ENERGY_LABEL = 5.0
+    W_ENERGY_LABEL = 1.0
     W_ENERGY_THETA = 1.0
-    W_SCALAR = 5.0
-    FX_WEIGHT = 1.0
+    W_SCALAR = 1.0
+    FX_WEIGHT = 10.0
     FY_WEIGHT = 0.0
-    M_WEIGHT = 1.0
+    M_WEIGHT = 10.0
     EI = 1.0
     LAMBDA_STIFF = 0.0
 
