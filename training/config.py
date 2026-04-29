@@ -24,31 +24,37 @@ class Config:
     SCALAR_NAMES = ["Energy", "Fx", "Fy", "M_left", "M_right"]
 
     SIGN_FX = -1.0
-    SIGN_M1 = 1.0
-    SIGN_M2 = -1.0
+    SIGN_M1 = -1.0
+    SIGN_M2 = 1.0
 
     INPUT_DIM = 3
-    HIDDEN_LAYERS = [512, 512, 512]
+    HIDDEN_LAYERS = [512, 512]
     ACTIVATION = "gelu"
     USE_LAYER_NORM = False
     DROPOUT = 0.0
 
-    W_ENERGY_LABEL = 50.0
+    # --- loss weights (target values after curriculum ramp) ---
+    W_ENERGY_LABEL = 20.0
     W_SCALAR = 1.0
-    FX_WEIGHT = 2.0
+    FX_WEIGHT = 5.0
     FY_WEIGHT = 0.0
-    M_WEIGHT = 1.0
+    M_WEIGHT = 10.0
     EI = 1.0
-    W_ENERGY_THETA = 0.0
+    W_ENERGY_THETA = 5.0
     LAMBDA_STIFF = 0.0
 
+    # --- curriculum: ramp from _INIT → target over CURRICULUM_EPOCHS ---
+    CURRICULUM_EPOCHS = 20
+    W_ENERGY_LABEL_INIT = 50.0
+    M_WEIGHT_INIT = 1.0
+
     BATCH_SIZE = 8192
-    EPOCHS = 150
+    EPOCHS = 50
     LR = 1e-3
     WEIGHT_DECAY = 1e-5
     GRAD_CLIP = 1.0
-    LOG_INTERVAL = 40
-    PATIENCE = 10
+    LOG_INTERVAL = 20
+    PATIENCE = 15
     MIN_DELTA = 1e-4
     LR_FACTOR = 0.5
     LR_PATIENCE = 4
