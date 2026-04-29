@@ -70,6 +70,12 @@ def train():
     best_val = float("inf")
     no_improve_count = 0
     for epoch in range(1, Config.EPOCHS + 1):
+        # curriculum: linearly ramp energy weight down and moment weight up
+        if epoch <= Config.CURRICULUM_EPOCHS:
+            frac = epoch / Config.CURRICULUM_EPOCHS
+            Config.W_ENERGY_LABEL = Config.W_ENERGY_LABEL_INIT + frac * (20.0 - Config.W_ENERGY_LABEL_INIT)
+            Config.M_WEIGHT = Config.M_WEIGHT_INIT + frac * (10.0 - Config.M_WEIGHT_INIT)
+
         model.train()
         epoch_loss = 0.0
         t0 = time.time()
@@ -88,11 +94,12 @@ def train():
         print_validation_sample(model, val_loader, dataset, sample_idx=0)
         avg_train = epoch_loss / len(train_loader)
         elapsed = time.time() - t0
+        curriculum_tag = f" | W_E={Config.W_ENERGY_LABEL:.1f} W_M={Config.M_WEIGHT:.1f}" if epoch <= Config.CURRICULUM_EPOCHS else ""
         if Config.USE_GPU:
             mem = torch.cuda.memory_reserved(0) / 1e9
-            print(f"Epoch {epoch:3d}/{Config.EPOCHS} | train={avg_train:.5f} | val={val_loss:.5f} | time={elapsed:.1f}s | VRAM={mem:.2f}GB")
+            print(f"Epoch {epoch:3d}/{Config.EPOCHS} | train={avg_train:.5f} | val={val_loss:.5f} | time={elapsed:.1f}s | VRAM={mem:.2f}GB{curriculum_tag}")
         else:
-            print(f"Epoch {epoch:3d}/{Config.EPOCHS} | train={avg_train:.5f} | val={val_loss:.5f} | time={elapsed:.1f}s")
+            print(f"Epoch {epoch:3d}/{Config.EPOCHS} | train={avg_train:.5f} | val={val_loss:.5f} | time={elapsed:.1f}s{curriculum_tag}")
         history["train"].append(avg_train)
         history["val"].append(val_loss)
         history["breakdown"].append(val_bd)

@@ -13,7 +13,6 @@ class ElasticaLoss:
         self.t_mean = float(dataset.t_mean)
         self.t_std = float(dataset.t_std)
         self.arc_max = float(dataset.arc_max)
-        self.scalar_weights = torch.tensor([Config.FX_WEIGHT, Config.FY_WEIGHT, Config.M_WEIGHT, Config.M_WEIGHT], dtype=torch.float32)
 
     def _dn_theta(self, t):
         return t * self.t_std + self.t_mean
@@ -71,7 +70,7 @@ class ElasticaLoss:
     def __call__(self, model, x, y, arc_norm, theta_true, need_stiffness=False):
         device = x.device
         x_req = x.detach().requires_grad_(True)
-        U_pred_norm, g = model.energy_and_grad(x_req, create_graph=True)
+        U_pred_norm, g = model.energy_and_grad(x_req, create_graph=need_stiffness)
         x_phys = self._dn_x(x, device)
         d_phys = x_phys[:, 2].clamp(min=1e-8)
         energy_true, fx_true, fy_true, m1_true, m2_true = y[:, 0], y[:, 1], y[:, 2], y[:, 3], y[:, 4]
@@ -92,7 +91,7 @@ class ElasticaLoss:
         m1_pred = self._phys_to_norm(ML_phys, 3, device)
         m2_pred = self._phys_to_norm(MR_phys, 4, device)
         
-        w = self.scalar_weights.to(device)
+        w = torch.tensor([Config.FX_WEIGHT, Config.FY_WEIGHT, Config.M_WEIGHT, Config.M_WEIGHT], dtype=torch.float32, device=device)
         mse_fx = F.mse_loss(fx_pred, fx_true)
         mse_fy = F.mse_loss(fy_pred, fy_true)
         mse_m1 = F.mse_loss(m1_pred, m1_true)
