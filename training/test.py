@@ -26,7 +26,7 @@ def test():
     print(f"Loaded epoch {ckpt['epoch']} val_loss={ckpt['val_loss']:.6f}")
     print(f"Architecture: 3 -> {' -> '.join(map(str, Config.HIDDEN_LAYERS))} -> 1")
     _, _, test_loader, dataset = get_loaders(Config.HDF5_PATH, compute_stats=False)
-    pred_all, true_auto, true_theta = [], [], []
+    pred_all, true_auto, true_theta, x_all = [], [], [], []
     for x, y, arc, theta in test_loader:
         x_req = x.detach().requires_grad_(True)
         U = model(x_req)
@@ -42,6 +42,7 @@ def test():
         Fy_phys = (MR_phys - ML_phys) / d_phys
         pred_all.append(np.stack([U_phys, Fx_phys, Fy_phys, ML_phys, MR_phys], axis=1))
         true_auto.append(y.detach().cpu().numpy() * dataset.y_std[None, :] + dataset.y_mean[None, :])
+        x_all.append(x_phys)
         theta_phys = theta * dataset.t_std + dataset.t_mean
         arc_phys = arc * dataset.arc_max
         Fx_t, Fy_t, ML_t, MR_t, _, _ = ElasticaLoss.derive_from_theta(theta_phys, arc_phys)
@@ -50,6 +51,7 @@ def test():
     pred_all = np.concatenate(pred_all)
     true_auto = np.concatenate(true_auto)
     true_theta = np.concatenate(true_theta)
+    x_all = np.concatenate(x_all)
     print("=" * 70)
     print(f"{'Output':<12} {'AUTO R²':>9} {'AUTO RMSE':>12} {'AUTO MaxErr':>12} ")
     print("=" * 70)
@@ -68,6 +70,33 @@ def test():
     with open("test_results.json", "w") as f:
         json.dump(results, f, indent=2)
     print("Saved → test_results.json")
+
+    # --- outlier diagnostics (all five outputs) ---
+    abs_err = np.abs(true_auto - pred_all)          # (N, 5)
+    max_err_per_sample = abs_err.max(axis=1)        # worst output error per sample
+    top_k = 200
+    worst_idx = np.argsort(max_err_per_sample)[-top_k:]
+
+    print(f"\nTop-{top_k} outlier samples (ranked by max error across all outputs):")
+    pad = " " * 36
+    header = f"  {'phi1':>7}  {'phi2':>7}  {'d':>7}  | {'Output':<8} {'True':>10} {'Pred':>10} {'AbsErr':>10}"
+    print(header)
+    print("  " + "-" * (len(header) - 2))
+    for i in worst_idx[-20:][::-1]:
+        for j, name in enumerate(Config.SCALAR_NAMES):
+            prefix = f"  {x_all[i,0]:7.3f}  {x_all[i,1]:7.3f}  {x_all[i,2]:7.4f}" if j == 0 else pad
+            print(f"{prefix}  | {name:<8} {true_auto[i,j]:10.4f} {pred_all[i,j]:10.4f} {abs_err[i,j]:10.4f}")
+        print()
+
+    np.savez("outliers.npz",
+             phi1=x_all[worst_idx, 0],
+             phi2=x_all[worst_idx, 1],
+             d=x_all[worst_idx, 2],
+             true=true_auto[worst_idx],
+             pred=pred_all[worst_idx],
+             abs_err=abs_err[worst_idx],
+             output_names=np.array(Config.SCALAR_NAMES))
+    print("Outlier data saved → outliers.npz")
     print(f"total time taken: {time.time()-start} s")
 
 

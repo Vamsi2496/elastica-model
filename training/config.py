@@ -49,7 +49,7 @@ class Config:
     M_WEIGHT_INIT = 1.0
 
     BATCH_SIZE = 8192
-    EPOCHS = 50
+    EPOCHS = 600
     LR = 1e-3
     WEIGHT_DECAY = 1e-5
     GRAD_CLIP = 1.0
@@ -70,4 +70,5 @@ class Config:
 
     CKPT_DIR = "checkpoints_energy"
     CKPT_BEST = "checkpoints_energy/best_model.pt"
+    CKPT_LATEST = "checkpoints_energy/latest_model.pt"
     NORM_STATS = "norm_stats_energy.npz"

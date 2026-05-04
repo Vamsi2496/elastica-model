@@ -69,7 +69,21 @@ def train():
     history = {"train": [], "val": [], "breakdown": []}
     best_val = float("inf")
     no_improve_count = 0
-    for epoch in range(1, Config.EPOCHS + 1):
+    start_epoch = 1
+
+    if os.path.exists(Config.CKPT_LATEST):
+        ckpt = torch.load(Config.CKPT_LATEST, map_location=device)
+        model.load_state_dict(ckpt["model_state"])
+        optimizer.load_state_dict(ckpt["optim_state"])
+        if ckpt.get("scheduler_state") is not None:
+            scheduler.load_state_dict(ckpt["scheduler_state"])
+        start_epoch = ckpt["epoch"] + 1
+        best_val = ckpt["best_val"]
+        no_improve_count = ckpt["no_improve_count"]
+        history = ckpt["history"]
+        print(f"Resumed from epoch {ckpt['epoch']} (best_val={best_val:.6f}, no_improve={no_improve_count})")
+
+    for epoch in range(start_epoch, Config.EPOCHS + 1):
         # curriculum: linearly ramp energy weight down and moment weight up
         if epoch <= Config.CURRICULUM_EPOCHS:
             frac = epoch / Config.CURRICULUM_EPOCHS
@@ -113,6 +127,16 @@ def train():
             print(f"- No improvement for {no_improve_count}/{Config.PATIENCE} epoch(s) (best val={best_val:.6f})")
         with open("training_history.json", "w") as f:
             json.dump(history, f, indent=2)
+        torch.save({
+            "epoch": epoch,
+            "model_state": model.state_dict(),
+            "optim_state": optimizer.state_dict(),
+            "scheduler_state": scheduler.state_dict(),
+            "val_loss": val_loss,
+            "best_val": best_val,
+            "no_improve_count": no_improve_count,
+            "history": history,
+        }, Config.CKPT_LATEST)
         if no_improve_count >= Config.PATIENCE:
             print(f"⏹ Early stopping at epoch {epoch}")
             break
