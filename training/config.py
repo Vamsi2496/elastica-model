@@ -40,7 +40,7 @@ class Config:
     FY_WEIGHT = 0.0
     M_WEIGHT = 10.0
     EI = 1.0
-    W_ENERGY_THETA = 5.0
+    W_ENERGY_THETA = 0.0
     LAMBDA_STIFF = 0.0
 
     # --- curriculum: ramp from _INIT → target over CURRICULUM_EPOCHS ---
