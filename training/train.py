@@ -53,7 +53,9 @@ def train():
     os.makedirs(Config.CKPT_DIR, exist_ok=True)
     device = Config.DEVICE
     print(f"Device: {device}")
-    print(f"Architecture: 3 -> {' -> '.join(map(str, Config.HIDDEN_LAYERS))} -> 1")
+    fourier_tag = f" [Fourier×{Config.FOURIER_FEATURES} σ_φ={Config.FOURIER_SIGMA_PHI} σ_d={Config.FOURIER_SIGMA_D}→{2*Config.FOURIER_FEATURES}]" if Config.FOURIER_FEATURES > 0 else ""
+    res_tag = " +residual" if Config.USE_RESIDUAL else ""
+    print(f"Architecture: 3{fourier_tag} -> {' -> '.join(map(str, Config.HIDDEN_LAYERS))} -> 1{res_tag}")
     if Config.USE_GPU:
         print(f"GPU: {torch.cuda.get_device_name(0)}")
         print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")

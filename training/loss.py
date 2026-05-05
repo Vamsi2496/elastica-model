@@ -96,7 +96,10 @@ class ElasticaLoss:
         mse_fy = F.mse_loss(fy_pred, fy_true)
         mse_m1 = F.mse_loss(m1_pred, m1_true)
         mse_m2 = F.mse_loss(m2_pred, m2_true)
-        loss_scalar = w[0] * mse_fx + w[1] * mse_fy + w[2] * mse_m1 + w[3] * mse_m2
+        # L4 term: penalises large individual errors much more than MSE does,
+        # pushing the model to reduce the worst-case predictions
+        l4_fx = ((fx_pred - fx_true) ** 4).mean()
+        loss_scalar = w[0] * mse_fx + w[1] * mse_fy + w[2] * mse_m1 + w[3] * mse_m2 + Config.FX_L4_WEIGHT * l4_fx
         
         loss_stiff = torch.tensor(0.0, device=device)
         if need_stiffness and Config.LAMBDA_STIFF > 0.0:
@@ -108,4 +111,4 @@ class ElasticaLoss:
             loss_stiff = (H**2).mean()
         
         total = Config.W_ENERGY_LABEL * loss_energy_label + Config.W_ENERGY_THETA * loss_energy_theta + Config.W_SCALAR * loss_scalar + Config.LAMBDA_STIFF * loss_stiff
-        return total, {"energy": float(loss_energy_label.item()), "energy_theta": float(loss_energy_theta.item()), "Fx": float(mse_fx.item()), "Fy": float(mse_fy.item()), "M_left": float(mse_m1.item()), "M_right": float(mse_m2.item()), "scalar": float(loss_scalar.item()), "stiffness": float(loss_stiff.item()), "total": float(total.item())}
+        return total, {"energy": float(loss_energy_label.item()), "energy_theta": float(loss_energy_theta.item()), "Fx": float(mse_fx.item()), "Fx_L4": float(l4_fx.item()), "Fy": float(mse_fy.item()), "M_left": float(mse_m1.item()), "M_right": float(mse_m2.item()), "scalar": float(loss_scalar.item()), "stiffness": float(loss_stiff.item()), "total": float(total.item())}

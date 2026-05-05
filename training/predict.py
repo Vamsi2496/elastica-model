@@ -17,6 +17,8 @@ class EnergyPredictor:
         self.model = ElasticaEnergyNet().to(self.device)
         self.model.load_state_dict(ckpt["model_state"])
         self.model.eval()
+        fourier_tag = f" Fourier×{Config.FOURIER_FEATURES}(σ_φ={Config.FOURIER_SIGMA_PHI},σ_d={Config.FOURIER_SIGMA_D})" if Config.FOURIER_FEATURES > 0 else ""
+        print(f"Loaded epoch {ckpt['epoch']} | arch: [{', '.join(map(str, Config.HIDDEN_LAYERS))}]{fourier_tag} | params: {self.model.count_params():,}")
 
     def _norm_x(self, phi1, phi2, d):
         x = np.stack([np.asarray(phi1, np.float32).ravel(), np.asarray(phi2, np.float32).ravel(), np.asarray(d, np.float32).ravel()], axis=1)

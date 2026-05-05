@@ -32,13 +32,18 @@ class Config:
     ACTIVATION = "gelu"
     USE_LAYER_NORM = False
     DROPOUT = 0.0
+    FOURIER_FEATURES = 128   # random Fourier features per sin/cos → 256 inputs to MLP; 0 = disabled
+    FOURIER_SIGMA_PHI = 1.5  # freq scale for φ₁/φ₂ — smooth angular dependence, lower frequencies needed
+    FOURIER_SIGMA_D   = 5.0  # freq scale for d — snapping boundary is sharp over ~0.02 normalised units
+    USE_RESIDUAL = True      # residual skip connections in hidden layers
 
     # --- loss weights (target values after curriculum ramp) ---
     W_ENERGY_LABEL = 20.0
     W_SCALAR = 1.0
     FX_WEIGHT = 5.0
-    FY_WEIGHT = 0.0
+    FY_WEIGHT = 1.0
     M_WEIGHT = 10.0
+    FX_L4_WEIGHT = 0.5
     EI = 1.0
     W_ENERGY_THETA = 0.0
     LAMBDA_STIFF = 0.0
@@ -57,7 +62,7 @@ class Config:
     PATIENCE = 15
     MIN_DELTA = 1e-4
     LR_FACTOR = 0.5
-    LR_PATIENCE = 4
+    LR_PATIENCE = 6
     MIN_LR = 1e-6
     LR_THRESHOLD = 1e-4
 
