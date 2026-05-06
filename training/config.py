@@ -28,14 +28,8 @@ class Config:
     SIGN_M2 = 1.0
 
     INPUT_DIM = 3
-    HIDDEN_LAYERS = [512]
-    ACTIVATION = "gelu"
-    USE_LAYER_NORM = False
-    DROPOUT = 0.0
-    FOURIER_FEATURES = 128   # random Fourier features per sin/cos → 256 inputs to MLP; 0 = disabled
-    FOURIER_SIGMA_PHI = 1.5  # freq scale for φ₁/φ₂ — smooth angular dependence, lower frequencies needed
-    FOURIER_SIGMA_D   = 2.0  # freq scale for d — snapping boundary is sharp over ~0.02 normalised units
-    USE_RESIDUAL = True      # residual skip connections in hidden layers
+    # --- plain MLP architecture (GELU, no Fourier, no residuals) ---
+    HIDDEN_LAYERS = [128, 128]
 
     # --- loss weights (final / target values) ---
     W_ENERGY_LABEL = 20.0
@@ -43,7 +37,7 @@ class Config:
     FX_WEIGHT = 5.0
     FY_WEIGHT = 1.0
     M_WEIGHT = 10.0
-    FX_L4_WEIGHT = 1.0
+    FX_L4_WEIGHT = 0.0
     EI = 1.0
     W_ENERGY_THETA = 0.0
     LAMBDA_STIFF = 0.0
@@ -58,10 +52,9 @@ class Config:
     # Components NOT listed here keep their static weight throughout training.
     LOSS_SCHEDULE = [
         # attr              intro  ramp  init
-        ("W_ENERGY_LABEL",  1,     20,   50.0),  # 50 → 20 over epochs 1-20
-        ("FX_WEIGHT",      30,     10,    1.0),  # 1 → 10 over epochs 1-20
-        ("M_WEIGHT",       50,     20,    1.0),  # 1 → 10 over epochs 1-20
-        ("FX_L4_WEIGHT",  100,     10,    0.0),  # introduced at epoch 10, ramp 0 → 0.5
+        ("FX_WEIGHT",      50,     30,    0.0),  # 0 → 5 over epochs 50-80
+        ("M_WEIGHT",      100,     20,    0.0),  # 0 → 10 over epochs 100-120
+        ("FY_WEIGHT",     130,     30,    0.0),  # 0 → 5 over epochs 50-80
     ]
 
     BATCH_SIZE = 8192
@@ -70,8 +63,8 @@ class Config:
     WEIGHT_DECAY = 1e-5
     GRAD_CLIP = 1.0
     LOG_INTERVAL = 20
-    PATIENCE = 15
-    MIN_DELTA = 1e-4
+    PATIENCE = 500
+    MIN_DELTA = 1e-6
     LR_FACTOR = 0.5
     LR_PATIENCE = 6
     MIN_LR = 1e-6

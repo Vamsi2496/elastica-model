@@ -19,14 +19,12 @@ def test():
     start=time.time()
     device = Config.DEVICE
     print(f"Device: {device}")
-    ckpt = torch.load(Config.CKPT_BEST, map_location=device)
+    ckpt = torch.load(Config.CKPT_LATEST, map_location=device)
     model = ElasticaEnergyNet().to(device)
     model.load_state_dict(ckpt["model_state"])
     model.eval()
     print(f"Loaded epoch {ckpt['epoch']} val_loss={ckpt['val_loss']:.6f}")
-    fourier_tag = f" [Fourier×{Config.FOURIER_FEATURES} σ_φ={Config.FOURIER_SIGMA_PHI} σ_d={Config.FOURIER_SIGMA_D}→{2*Config.FOURIER_FEATURES}]" if Config.FOURIER_FEATURES > 0 else ""
-    res_tag = " +residual" if Config.USE_RESIDUAL else ""
-    print(f"Architecture: 3{fourier_tag} -> {' -> '.join(map(str, Config.HIDDEN_LAYERS))} -> 1{res_tag}")
+    print(f"Architecture: MLP  3 -> {' -> '.join(map(str, Config.HIDDEN_LAYERS))} -> 1  (GELU)")
     _, _, test_loader, dataset = get_loaders(Config.HDF5_PATH, compute_stats=False)
     pred_all, true_auto, true_theta, x_all = [], [], [], []
     for x, y, arc, theta in test_loader:
@@ -76,7 +74,7 @@ def test():
     # --- outlier diagnostics (all five outputs) ---
     abs_err = np.abs(true_auto - pred_all)          # (N, 5)
     max_err_per_sample = abs_err.max(axis=1)        # worst output error per sample
-    top_k = 2000
+    top_k = 20000
     worst_idx = np.argsort(max_err_per_sample)[-top_k:]
 
     print(f"\nTop-{top_k} outlier samples (ranked by max error across all outputs):")
@@ -84,7 +82,7 @@ def test():
     header = f"  {'phi1':>7}  {'phi2':>7}  {'d':>7}  | {'Output':<8} {'True':>10} {'Pred':>10} {'AbsErr':>10}"
     print(header)
     print("  " + "-" * (len(header) - 2))
-    for i in worst_idx[-20:][::-1]:
+    for i in worst_idx[-2000:-1900][::-1]:
         for j, name in enumerate(Config.SCALAR_NAMES):
             prefix = f"  {x_all[i,0]:7.3f}  {x_all[i,1]:7.3f}  {x_all[i,2]:7.4f}" if j == 0 else pad
             print(f"{prefix}  | {name:<8} {true_auto[i,j]:10.4f} {pred_all[i,j]:10.4f} {abs_err[i,j]:10.4f}")

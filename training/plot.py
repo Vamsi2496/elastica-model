@@ -69,6 +69,45 @@ active = active_keys(breakdown)
 
 
 # ------------------------------------------------------------------
+# Schedule markers — vertical lines + ramp shading at each scheduled
+# component's intro epoch, coloured to match the component's curve.
+# ------------------------------------------------------------------
+ATTR_TO_PRIMARY_KEY = {
+    "W_ENERGY_LABEL": "energy",
+    "W_ENERGY_THETA": "energy_theta",
+    "FX_WEIGHT":      "Fx",
+    "FY_WEIGHT":      "Fy",
+    "M_WEIGHT":       "M_left",       # M_left and M_right share this weight
+    "FX_L4_WEIGHT":   "Fx_L4",
+    "LAMBDA_STIFF":   "stiffness",
+}
+
+
+def add_schedule_markers(ax, x_min: int, x_max: int) -> None:
+    """For each scheduled entry whose intro epoch is in [x_min, x_max]:
+        - draw a dashed vertical line at intro_epoch (component colour)
+        - shade [intro, intro + ramp] to mark the ramp window
+        - place a rotated label naming the introduced weight
+    """
+    for attr, intro, ramp, _init in Config.LOSS_SCHEDULE:
+        if intro < x_min or intro > x_max:
+            continue
+        key = ATTR_TO_PRIMARY_KEY.get(attr)
+        color = COMPONENT_STYLE[key][1] if key in COMPONENT_STYLE else "gray"
+
+        ax.axvline(intro, color=color, linestyle=":", linewidth=1.2, alpha=0.7)
+        if ramp > 0:
+            ax.axvspan(intro, min(intro + ramp, x_max), color=color, alpha=0.08)
+
+        ax.text(
+            intro, 0.97, f" {attr} on",
+            color=color, fontsize=8, rotation=90,
+            va="top", ha="left", alpha=0.85,
+            transform=ax.get_xaxis_transform(),   # x in data coords, y in axis fraction
+        )
+
+
+# ------------------------------------------------------------------
 # 1) Total loss curves
 # ------------------------------------------------------------------
 fig, axes = plt.subplots(1, 2, figsize=(14, 5))
@@ -102,14 +141,15 @@ fig.suptitle(
     fontsize=13, fontweight="bold",
 )
 
-for ax, sl, title in [
-    (axes[0], slice(None),       "All Epochs (log scale)"),
-    (axes[1], slice(mid - 1, None), f"Zoomed — Last {len(epochs) - mid + 1} Epochs"),
+for ax, sl, title, x_min in [
+    (axes[0], slice(None),           "All Epochs (log scale)",                   1),
+    (axes[1], slice(mid - 1, None),  f"Zoomed — Last {len(epochs) - mid + 1} Epochs", mid),
 ]:
     for key in active:
         label, color, ls = COMPONENT_STYLE[key]
         vals = [bd.get(key, 0.0) for bd in breakdown]
         ax.plot(epochs[sl], vals[sl], label=label, color=color, linestyle=ls, linewidth=1.8)
+    add_schedule_markers(ax, x_min, len(epochs))
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Loss Value")
     ax.set_title(title)
@@ -205,6 +245,7 @@ for key in active:
     vals = [bd.get(key, 0.0) for bd in breakdown]
     ax.plot(epochs, vals, label=label, color=color, linestyle=ls, linewidth=1.8)
 
+add_schedule_markers(ax, 1, len(epochs))
 ax.set_xlabel("Epoch")
 ax.set_ylabel("Loss")
 ax.set_title("Loss Component Convergence (active components only)")
