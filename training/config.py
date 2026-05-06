@@ -28,30 +28,41 @@ class Config:
     SIGN_M2 = 1.0
 
     INPUT_DIM = 3
-    HIDDEN_LAYERS = [512, 512]
+    HIDDEN_LAYERS = [512]
     ACTIVATION = "gelu"
     USE_LAYER_NORM = False
     DROPOUT = 0.0
     FOURIER_FEATURES = 128   # random Fourier features per sin/cos → 256 inputs to MLP; 0 = disabled
     FOURIER_SIGMA_PHI = 1.5  # freq scale for φ₁/φ₂ — smooth angular dependence, lower frequencies needed
-    FOURIER_SIGMA_D   = 5.0  # freq scale for d — snapping boundary is sharp over ~0.02 normalised units
+    FOURIER_SIGMA_D   = 2.0  # freq scale for d — snapping boundary is sharp over ~0.02 normalised units
     USE_RESIDUAL = True      # residual skip connections in hidden layers
 
-    # --- loss weights (target values after curriculum ramp) ---
+    # --- loss weights (final / target values) ---
     W_ENERGY_LABEL = 20.0
     W_SCALAR = 1.0
     FX_WEIGHT = 5.0
     FY_WEIGHT = 1.0
     M_WEIGHT = 10.0
-    FX_L4_WEIGHT = 0.5
+    FX_L4_WEIGHT = 1.0
     EI = 1.0
     W_ENERGY_THETA = 0.0
     LAMBDA_STIFF = 0.0
 
-    # --- curriculum: ramp from _INIT → target over CURRICULUM_EPOCHS ---
-    CURRICULUM_EPOCHS = 20
-    W_ENERGY_LABEL_INIT = 50.0
-    M_WEIGHT_INIT = 1.0
+    # --- loss schedule ---
+    # Each entry: (config_attr, intro_epoch, ramp_epochs, init_value)
+    #   intro_epoch  — epoch at which the component is switched on (weight = 0 before this)
+    #   ramp_epochs  — linearly ramp from init_value → target over this many epochs
+    #                  (0 = step directly to target at intro_epoch)
+    #   init_value   — value at intro_epoch (ramp start); ignored when ramp_epochs = 0
+    # Target for each entry is the static weight defined above.
+    # Components NOT listed here keep their static weight throughout training.
+    LOSS_SCHEDULE = [
+        # attr              intro  ramp  init
+        ("W_ENERGY_LABEL",  1,     20,   50.0),  # 50 → 20 over epochs 1-20
+        ("FX_WEIGHT",      30,     10,    1.0),  # 1 → 10 over epochs 1-20
+        ("M_WEIGHT",       50,     20,    1.0),  # 1 → 10 over epochs 1-20
+        ("FX_L4_WEIGHT",  100,     10,    0.0),  # introduced at epoch 10, ramp 0 → 0.5
+    ]
 
     BATCH_SIZE = 8192
     EPOCHS = 600

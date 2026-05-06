@@ -13,6 +13,26 @@ from model import ElasticaEnergyNet
 
 warnings.filterwarnings("ignore", message="Detected call of.*lr_scheduler.step.*before.*optimizer.step", category=UserWarning)
 
+# Capture target weights once at import time, before any epoch mutates Config.
+_SCHEDULE_TARGETS = {attr: getattr(Config, attr) for attr, *_ in Config.LOSS_SCHEDULE}
+
+
+def apply_schedule(epoch: int) -> str:
+    """Set Config weights according to LOSS_SCHEDULE and return a short status tag."""
+    tags = []
+    for attr, intro, ramp, init_val in Config.LOSS_SCHEDULE:
+        target = _SCHEDULE_TARGETS[attr]
+        if epoch < intro:
+            new_val = 0.0
+        elif ramp == 0 or epoch >= intro + ramp:
+            new_val = target
+        else:
+            frac = (epoch - intro) / ramp
+            new_val = init_val + frac * (target - init_val)
+        setattr(Config, attr, new_val)
+        tags.append(f"{attr}={new_val:.2g}")
+    return " | " + "  ".join(tags) if tags else ""
+
 
 def evaluate(model, loader, criterion):
     model.eval()
@@ -86,11 +106,7 @@ def train():
         print(f"Resumed from epoch {ckpt['epoch']} (best_val={best_val:.6f}, no_improve={no_improve_count})")
 
     for epoch in range(start_epoch, Config.EPOCHS + 1):
-        # curriculum: linearly ramp energy weight down and moment weight up
-        if epoch <= Config.CURRICULUM_EPOCHS:
-            frac = epoch / Config.CURRICULUM_EPOCHS
-            Config.W_ENERGY_LABEL = Config.W_ENERGY_LABEL_INIT + frac * (20.0 - Config.W_ENERGY_LABEL_INIT)
-            Config.M_WEIGHT = Config.M_WEIGHT_INIT + frac * (10.0 - Config.M_WEIGHT_INIT)
+        sched_tag = apply_schedule(epoch)
 
         model.train()
         epoch_loss = 0.0
@@ -110,12 +126,11 @@ def train():
         print_validation_sample(model, val_loader, dataset, sample_idx=0)
         avg_train = epoch_loss / len(train_loader)
         elapsed = time.time() - t0
-        curriculum_tag = f" | W_E={Config.W_ENERGY_LABEL:.1f} W_M={Config.M_WEIGHT:.1f}" if epoch <= Config.CURRICULUM_EPOCHS else ""
         if Config.USE_GPU:
             mem = torch.cuda.memory_reserved(0) / 1e9
-            print(f"Epoch {epoch:3d}/{Config.EPOCHS} | train={avg_train:.5f} | val={val_loss:.5f} | time={elapsed:.1f}s | VRAM={mem:.2f}GB{curriculum_tag}")
+            print(f"Epoch {epoch:3d}/{Config.EPOCHS} | train={avg_train:.5f} | val={val_loss:.5f} | time={elapsed:.1f}s | VRAM={mem:.2f}GB{sched_tag}")
         else:
-            print(f"Epoch {epoch:3d}/{Config.EPOCHS} | train={avg_train:.5f} | val={val_loss:.5f} | time={elapsed:.1f}s{curriculum_tag}")
+            print(f"Epoch {epoch:3d}/{Config.EPOCHS} | train={avg_train:.5f} | val={val_loss:.5f} | time={elapsed:.1f}s{sched_tag}")
         history["train"].append(avg_train)
         history["val"].append(val_loss)
         history["breakdown"].append(val_bd)
