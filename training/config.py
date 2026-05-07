@@ -2,7 +2,7 @@ import torch
 
 
 class Config:
-    HDF5_PATH = "auto_data.h5"
+    HDF5_PATH = "auto_data_no_boundary.h5"
     N_NODES = 201
     TRAIN_SPLIT = 0.80
     VAL_SPLIT = 0.10
@@ -32,11 +32,11 @@ class Config:
     HIDDEN_LAYERS = [128, 128]
 
     # --- loss weights (final / target values) ---
-    W_ENERGY_LABEL = 20.0
+    W_ENERGY_LABEL = 1.0
     W_SCALAR = 1.0
-    FX_WEIGHT = 5.0
+    FX_WEIGHT = 1.0
     FY_WEIGHT = 1.0
-    M_WEIGHT = 10.0
+    M_WEIGHT = 1.0
     FX_L4_WEIGHT = 0.0
     EI = 1.0
     W_ENERGY_THETA = 0.0
@@ -52,17 +52,17 @@ class Config:
     # Components NOT listed here keep their static weight throughout training.
     LOSS_SCHEDULE = [
         # attr              intro  ramp  init
-        ("FX_WEIGHT",      50,     5,    0.0),  # 0 → 5 over epochs 50-80
-        ("M_WEIGHT",      150,     5,    0.0),  # 0 → 10 over epochs 100-120
-        ("FY_WEIGHT",     250,     3,    0.0),  # 0 → 5 over epochs 50-80
+        ("FX_WEIGHT",      50,     1,    0.0),  # 0 → 5 over epochs 50-80
+        ("M_WEIGHT",      300,     1,    0.0),  # 0 → 10 over epochs 100-120
+        ("FY_WEIGHT",     590,     1,    0.0),  # 0 → 5 over epochs 50-80
     ]
 
-    BATCH_SIZE = 8192
+    BATCH_SIZE = 32768
     EPOCHS = 600
     LR = 1e-3
     WEIGHT_DECAY = 1e-5
     GRAD_CLIP = 1.0
-    LOG_INTERVAL = 20
+    LOG_INTERVAL = 40
     PATIENCE = 600
     MIN_DELTA = 1e-6
     LR_FACTOR = 0.5

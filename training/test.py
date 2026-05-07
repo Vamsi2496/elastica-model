@@ -74,7 +74,7 @@ def test():
     # --- outlier diagnostics (all five outputs) ---
     abs_err = np.abs(true_auto - pred_all)          # (N, 5)
     max_err_per_sample = abs_err.max(axis=1)        # worst output error per sample
-    top_k = 20000
+    top_k = 2000
     worst_idx = np.argsort(max_err_per_sample)[-top_k:]
 
     print(f"\nTop-{top_k} outlier samples (ranked by max error across all outputs):")
@@ -82,7 +82,7 @@ def test():
     header = f"  {'phi1':>7}  {'phi2':>7}  {'d':>7}  | {'Output':<8} {'True':>10} {'Pred':>10} {'AbsErr':>10}"
     print(header)
     print("  " + "-" * (len(header) - 2))
-    for i in worst_idx[-2000:-1900][::-1]:
+    for i in worst_idx[-20:][::-1]:
         for j, name in enumerate(Config.SCALAR_NAMES):
             prefix = f"  {x_all[i,0]:7.3f}  {x_all[i,1]:7.3f}  {x_all[i,2]:7.4f}" if j == 0 else pad
             print(f"{prefix}  | {name:<8} {true_auto[i,j]:10.4f} {pred_all[i,j]:10.4f} {abs_err[i,j]:10.4f}")
