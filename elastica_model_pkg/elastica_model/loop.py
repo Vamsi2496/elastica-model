@@ -409,6 +409,25 @@ def run_at_point(phi1, phi2, d,
         print(f"  [ERROR] HDF5/R-tree lookup failed: {e}")
         return False, *empty
 
+    # ── Short-circuit: nearest neighbour is already at the target ───────
+    # If the stored point is already within the convergence tolerance in all
+    # three normalised dimensions, running AUTO would just re-find the same
+    # solution.  Return the existing HDF5 entry directly instead of spinning
+    # up a subprocess that will trivially converge (or, before the check<3
+    # fix, incorrectly report failure because no continuation steps were taken).
+    _DUP_TOL = 1e-4   # tighter than AUTO tol (1e-3); matches the skip guards in restart.auto
+    with h5py.File(hdf5_file, 'r') as _f:
+        _nd = float(_f['d'][nearest_idx])
+        _np1 = float(_f['phi1'][nearest_idx])
+        _np2 = float(_f['phi2'][nearest_idx])
+    if (abs(_nd - d) < _DUP_TOL and
+            abs(_np1 - phi1) < _DUP_TOL and
+            abs(_np2 - phi2) < _DUP_TOL):
+        print(f"  Nearest neighbour is already within tolerance "
+              f"(dist={nearest_dist:.2e}) — returning existing HDF5 entry "
+              f"without running AUTO.")
+        return True, [_np1], [_np2], [_nd], [nearest_idx]
+
     # ── Step 2: build arrays and write s.initial ─────────────
     u2, u3, u4 = _build_solution_arrays(t_vals, u1_vals)
     try:
