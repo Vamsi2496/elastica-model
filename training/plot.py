@@ -137,7 +137,7 @@ print("Saved → plots/loss_curves.png")
 # ------------------------------------------------------------------
 fig, axes = plt.subplots(1, 2, figsize=(16, 5))
 fig.suptitle(
-    "Validation Loss Breakdown  (only components with non-zero weight)",
+    "Validation Loss Breakdown",  #(only components with non-zero weight)",
     fontsize=13, fontweight="bold",
 )
 

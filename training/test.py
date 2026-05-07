@@ -19,7 +19,7 @@ def test():
     start=time.time()
     device = Config.DEVICE
     print(f"Device: {device}")
-    ckpt = torch.load(Config.CKPT_LATEST, map_location=device)
+    ckpt = torch.load(Config.CKPT_BEST, map_location=device)
     model = ElasticaEnergyNet().to(device)
     model.load_state_dict(ckpt["model_state"])
     model.eval()

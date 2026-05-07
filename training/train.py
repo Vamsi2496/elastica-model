@@ -17,11 +17,23 @@ warnings.filterwarnings("ignore", message="Detected call of.*lr_scheduler.step.*
 _SCHEDULE_TARGETS = {attr: getattr(Config, attr) for attr, *_ in Config.LOSS_SCHEDULE}
 
 
-def apply_schedule(epoch: int) -> str:
-    """Set Config weights according to LOSS_SCHEDULE and return a short status tag."""
+def apply_schedule(epoch: int) -> tuple[str, bool]:
+    """Set Config weights according to LOSS_SCHEDULE.
+
+    Returns:
+        (status_tag, new_component_introduced)
+
+        new_component_introduced is True on the exact epoch a component
+        transitions from 0 to non-zero weight.  The caller must reset the
+        LR scheduler's internal best on such epochs so ReduceLROnPlateau
+        does not compare the new multi-component loss against the old
+        energy-only minimum (which would otherwise trigger runaway LR decay).
+    """
     tags = []
+    new_component = False
     for attr, intro, ramp, init_val in Config.LOSS_SCHEDULE:
         target = _SCHEDULE_TARGETS[attr]
+        old_val = getattr(Config, attr)
         if epoch < intro:
             new_val = 0.0
         elif ramp == 0 or epoch >= intro + ramp:
@@ -29,9 +41,12 @@ def apply_schedule(epoch: int) -> str:
         else:
             frac = (epoch - intro) / ramp
             new_val = init_val + frac * (target - init_val)
+        if old_val == 0.0 and new_val > 0.0:
+            new_component = True
         setattr(Config, attr, new_val)
         tags.append(f"{attr}={new_val:.2g}")
-    return " | " + "  ".join(tags) if tags else ""
+    tag = " | " + "  ".join(tags) if tags else ""
+    return tag, new_component
 
 
 def evaluate(model, loader, criterion):
@@ -104,7 +119,26 @@ def train():
         print(f"Resumed from epoch {ckpt['epoch']} (best_val={best_val:.6f}, no_improve={no_improve_count})")
 
     for epoch in range(start_epoch, Config.EPOCHS + 1):
-        sched_tag = apply_schedule(epoch)
+        sched_tag, new_component = apply_schedule(epoch)
+
+        # --- LR-scheduler reset on curriculum change ----------------------------
+        # When a new loss component is switched on, the total loss jumps up.
+        # ReduceLROnPlateau would then compare every subsequent epoch against the
+        # old (lower) energy-only best, counting every epoch as "bad" and halving
+        # the LR every patience+1 epochs until MIN_LR is hit.  We prevent this by
+        # resetting the scheduler's internal best and the LR itself to the initial
+        # value so the model gets a fresh learning-rate window for the new task.
+        if new_component:
+            lr_now = optimizer.param_groups[0]["lr"]
+            for pg in optimizer.param_groups:
+                pg["lr"] = Config.LR
+            scheduler.best = float("inf")
+            scheduler.num_bad_epochs = 0
+            best_val = float("inf")
+            no_improve_count = 0
+            print(f"*** New loss component introduced at epoch {epoch}: "
+                  f"LR reset {lr_now:.2e} -> {Config.LR:.2e}, scheduler best reset ***")
+        # ------------------------------------------------------------------------
 
         model.train()
         epoch_loss = 0.0

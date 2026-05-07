@@ -52,9 +52,9 @@ class Config:
     # Components NOT listed here keep their static weight throughout training.
     LOSS_SCHEDULE = [
         # attr              intro  ramp  init
-        ("FX_WEIGHT",      50,     30,    0.0),  # 0 → 5 over epochs 50-80
-        ("M_WEIGHT",      100,     20,    0.0),  # 0 → 10 over epochs 100-120
-        ("FY_WEIGHT",     130,     30,    0.0),  # 0 → 5 over epochs 50-80
+        ("FX_WEIGHT",      50,     5,    0.0),  # 0 → 5 over epochs 50-80
+        ("M_WEIGHT",      150,     5,    0.0),  # 0 → 10 over epochs 100-120
+        ("FY_WEIGHT",     250,     3,    0.0),  # 0 → 5 over epochs 50-80
     ]
 
     BATCH_SIZE = 8192
@@ -63,7 +63,7 @@ class Config:
     WEIGHT_DECAY = 1e-5
     GRAD_CLIP = 1.0
     LOG_INTERVAL = 20
-    PATIENCE = 500
+    PATIENCE = 600
     MIN_DELTA = 1e-6
     LR_FACTOR = 0.5
     LR_PATIENCE = 6
