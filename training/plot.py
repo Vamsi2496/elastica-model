@@ -24,8 +24,6 @@ epochs     = list(range(1, len(train_loss) + 1))
 if len(epochs) == 0:
     raise ValueError("training_history.json contains no epochs.")
 
-mid = max(1, len(epochs) // 2)
-
 # ------------------------------------------------------------------
 # Which breakdown components are active (weight > 0 in current config)?
 # Components whose weight is exactly 0 are not plotted.
@@ -37,16 +35,17 @@ COMPONENT_WEIGHTS = {
     "energy_theta": Config.W_ENERGY_THETA,
     "Fx":           W * Config.FX_WEIGHT,
     "Fx_L4":        W * Config.FX_L4_WEIGHT,
-    "Fy":           W * Config.FY_WEIGHT,
+    #"Fy":           W * Config.FY_WEIGHT,
+    "Fy":           1.0,  # always plot Fy
     "M_left":       W * Config.M_WEIGHT,
     "M_right":      W * Config.M_WEIGHT,
-    "scalar":       W,           # aggregate of all scalar sub-losses
+    "scalar":       W,    # aggregate of all scalar sub-losses
     "stiffness":    Config.LAMBDA_STIFF,
-    "total":        1.0,         # always plot total
+    "total":        1.0,  # always plot total
 }
 
 COMPONENT_STYLE = {
-    "energy":       ("Energy label",  "black",          "-"),
+    "energy":       ("Energy ",  "black",         "-"),
     "energy_theta": ("Energy θ",      "dimgray",        "--"),
     "Fx":           ("Fx",            "steelblue",      "-"),
     "Fx_L4":        ("Fx L4",         "cornflowerblue", "--"),
@@ -67,7 +66,6 @@ def active_keys(bd_list):
 
 active = active_keys(breakdown)
 
-
 # ------------------------------------------------------------------
 # Schedule markers — vertical lines + ramp shading at each scheduled
 # component's intro epoch, coloured to match the component's curve.
@@ -77,22 +75,21 @@ ATTR_TO_PRIMARY_KEY = {
     "W_ENERGY_THETA": "energy_theta",
     "FX_WEIGHT":      "Fx",
     "FY_WEIGHT":      "Fy",
-    "M_WEIGHT":       "M_left",       # M_left and M_right share this weight
+    "M_WEIGHT":       "M_left",   # M_left and M_right share this weight
     "FX_L4_WEIGHT":   "Fx_L4",
     "LAMBDA_STIFF":   "stiffness",
 }
 
-
 def add_schedule_markers(ax, x_min: int, x_max: int) -> None:
     """For each scheduled entry whose intro epoch is in [x_min, x_max]:
-        - draw a dashed vertical line at intro_epoch (component colour)
-        - shade [intro, intro + ramp] to mark the ramp window
-        - place a rotated label naming the introduced weight
+    - draw a dashed vertical line at intro_epoch (component colour)
+    - shade [intro, intro + ramp] to mark the ramp window
+    - place a rotated label naming the introduced weight
     """
     for attr, intro, ramp, _init in Config.LOSS_SCHEDULE:
         if intro < x_min or intro > x_max:
             continue
-        key = ATTR_TO_PRIMARY_KEY.get(attr)
+        key   = ATTR_TO_PRIMARY_KEY.get(attr)
         color = COMPONENT_STYLE[key][1] if key in COMPONENT_STYLE else "gray"
 
         ax.axvline(intro, color=color, linestyle=":", linewidth=1.2, alpha=0.7)
@@ -103,65 +100,52 @@ def add_schedule_markers(ax, x_min: int, x_max: int) -> None:
             intro, 0.97, f" {attr} on",
             color=color, fontsize=8, rotation=90,
             va="top", ha="left", alpha=0.85,
-            transform=ax.get_xaxis_transform(),   # x in data coords, y in axis fraction
+            transform=ax.get_xaxis_transform(),  # x in data coords, y in axis fraction
         )
 
-
 # ------------------------------------------------------------------
-# 1) Total loss curves
+# 1) Total loss curves — single plot (full history)
 # ------------------------------------------------------------------
-fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+fig, ax = plt.subplots(figsize=(8, 5))
 fig.suptitle("Training History", fontsize=14, fontweight="bold")
 
-for ax, sl, title in [
-    (axes[0], slice(None),       "Train vs Validation Loss (full)"),
-    (axes[1], slice(mid - 1, None), f"Zoomed — Last {len(epochs) - mid + 1} Epochs"),
-]:
-    ax.plot(epochs[sl], train_loss[sl], label="Train", color="steelblue", linewidth=2)
-    ax.plot(epochs[sl], val_loss[sl],   label="Val",   color="tomato",    linewidth=2, linestyle="--")
-    ax.set_xlabel("Epoch")
-    ax.set_ylabel("Total Loss")
-    ax.set_title(title)
-    ax.set_yscale("log")
-    ax.legend()
-    ax.grid(True, alpha=0.3)
+ax.plot(epochs, train_loss, label="Train", color="steelblue", linewidth=2)
+ax.plot(epochs, val_loss,   label="Val",   color="tomato",    linewidth=2, linestyle="--")
+ax.set_xlabel("Epoch")
+ax.set_ylabel("Total Loss")
+ax.set_title("Train vs Validation Loss")
+ax.set_yscale("log")
+ax.legend()
+ax.grid(True, alpha=0.3)
 
 plt.tight_layout()
 plt.savefig("plots/loss_curves.png", dpi=150, bbox_inches="tight")
 plt.close()
 print("Saved → plots/loss_curves.png")
 
-
 # ------------------------------------------------------------------
-# 2) Validation breakdown curves (active components only)
+# 2) Validation breakdown curves — single plot (all epochs)
 # ------------------------------------------------------------------
-fig, axes = plt.subplots(1, 2, figsize=(16, 5))
-fig.suptitle(
-    "Validation Loss Breakdown",  #(only components with non-zero weight)",
-    fontsize=13, fontweight="bold",
-)
+fig, ax = plt.subplots(figsize=(10, 5))
+fig.suptitle("Validation Loss Breakdown", fontsize=13, fontweight="bold")
 
-for ax, sl, title, x_min in [
-    (axes[0], slice(None),           "All Epochs (log scale)",                   1),
-    (axes[1], slice(mid - 1, None),  f"Zoomed — Last {len(epochs) - mid + 1} Epochs", mid),
-]:
-    for key in active:
-        label, color, ls = COMPONENT_STYLE[key]
-        vals = [bd.get(key, 0.0) for bd in breakdown]
-        ax.plot(epochs[sl], vals[sl], label=label, color=color, linestyle=ls, linewidth=1.8)
-    add_schedule_markers(ax, x_min, len(epochs))
-    ax.set_xlabel("Epoch")
-    ax.set_ylabel("Loss Value")
-    ax.set_title(title)
-    ax.set_yscale("log")
-    ax.legend(fontsize=9, ncol=2)
-    ax.grid(True, alpha=0.3)
+for key in active:
+    label, color, ls = COMPONENT_STYLE[key]
+    vals = [bd.get(key, 0.0) for bd in breakdown]
+    ax.plot(epochs, vals, label=label, color=color, linestyle=ls, linewidth=1.8)
+
+add_schedule_markers(ax, 1, len(epochs))
+ax.set_xlabel("Epoch")
+ax.set_ylabel("Loss Value")
+ax.set_title("All Epochs (log scale)")
+ax.set_yscale("log")
+ax.legend(fontsize=9, ncol=2)
+ax.grid(True, alpha=0.3)
 
 plt.tight_layout()
 plt.savefig("plots/loss_breakdown.png", dpi=150, bbox_inches="tight")
 plt.close()
 print("Saved → plots/loss_breakdown.png")
-
 
 # ------------------------------------------------------------------
 # 3) Test R² per output
@@ -170,10 +154,10 @@ auto_results = test_results.get("AUTO", {})
 if not auto_results:
     raise ValueError("test_results.json does not contain 'AUTO' results.")
 
-names      = list(auto_results.keys())
-r2vals     = [auto_results[n]["R2"]     for n in names]
-rmse_vals  = [auto_results[n]["RMSE"]   for n in names]
-maxerr_vals= [auto_results[n]["MaxErr"] for n in names]
+names       = list(auto_results.keys())
+r2vals      = [auto_results[n]["R2"]     for n in names]
+rmse_vals   = [auto_results[n]["RMSE"]   for n in names]
+maxerr_vals = [auto_results[n]["MaxErr"] for n in names]
 
 bar_colors = [
     "steelblue" if v >= 0.95 else "darkorange" if v >= 0.90 else "tomato"
@@ -202,7 +186,6 @@ plt.tight_layout()
 plt.savefig("plots/test_r2.png", dpi=150, bbox_inches="tight")
 plt.close()
 print("Saved → plots/test_r2.png")
-
 
 # ------------------------------------------------------------------
 # 4) Test RMSE / Max Error
@@ -234,7 +217,6 @@ plt.tight_layout()
 plt.savefig("plots/test_errors.png", dpi=150, bbox_inches="tight")
 plt.close()
 print("Saved → plots/test_errors.png")
-
 
 # ------------------------------------------------------------------
 # 5) Per-component convergence (active components only, full history)
