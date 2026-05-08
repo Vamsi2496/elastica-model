@@ -35,8 +35,8 @@ COMPONENT_WEIGHTS = {
     "energy_theta": Config.W_ENERGY_THETA,
     "Fx":           W * Config.FX_WEIGHT,
     "Fx_L4":        W * Config.FX_L4_WEIGHT,
-    #"Fy":           W * Config.FY_WEIGHT,
-    "Fy":           1.0,  # always plot Fy
+    "Fy":           W * Config.FY_WEIGHT,
+    #"Fy":           1.0,  # always plot Fy
     "M_left":       W * Config.M_WEIGHT,
     "M_right":      W * Config.M_WEIGHT,
     "scalar":       W,    # aggregate of all scalar sub-losses
@@ -230,7 +230,7 @@ for key in active:
 add_schedule_markers(ax, 1, len(epochs))
 ax.set_xlabel("Epoch")
 ax.set_ylabel("Loss")
-ax.set_title("Loss Component Convergence (active components only)")
+ax.set_title("Loss Component Convergence")
 ax.set_yscale("log")
 ax.legend(ncol=2)
 ax.grid(True, alpha=0.3)

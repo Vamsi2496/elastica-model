@@ -52,9 +52,9 @@ class Config:
     # Components NOT listed here keep their static weight throughout training.
     LOSS_SCHEDULE = [
         # attr              intro  ramp  init
-        ("FX_WEIGHT",      50,     1,    0.0),  # 0 → 5 over epochs 50-80
-        ("M_WEIGHT",      300,     1,    0.0),  # 0 → 10 over epochs 100-120
-        
+        ("FX_WEIGHT",      75,     3,    0.0),  # 0 → 5 over epochs 50-80
+        ("M_WEIGHT",      605,     1,    0.0),  # 0 → 10 over epochs 100-120
+        ("FY_WEIGHT",     605,     1,    0.0),  # 0 → 5 over epochs 50-80
     ]
 
     BATCH_SIZE = 32768
