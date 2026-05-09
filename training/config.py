@@ -34,7 +34,7 @@ class Config:
     # --- loss weights (final / target values) ---
     W_ENERGY_LABEL = 1.0
     W_SCALAR = 1.0
-    FX_WEIGHT = 1.0
+    FX_WEIGHT = 3.0
     FY_WEIGHT = 1.0
     M_WEIGHT = 1.0
     FX_L4_WEIGHT = 0.0
@@ -52,13 +52,13 @@ class Config:
     # Components NOT listed here keep their static weight throughout training.
     LOSS_SCHEDULE = [
         # attr              intro  ramp  init
-        ("FX_WEIGHT",      75,     3,    0.0),  # 0 → 5 over epochs 50-80
-        ("M_WEIGHT",      605,     1,    0.0),  # 0 → 10 over epochs 100-120
-        ("FY_WEIGHT",     605,     1,    0.0),  # 0 → 5 over epochs 50-80
+        ("FX_WEIGHT",      75,     1,    0.0),  # 0 → 5 over epochs 50-80
+        ("M_WEIGHT",      1605,     1,    0.0),  # 0 → 10 over epochs 100-120
+        ("FY_WEIGHT",     1605,     1,    0.0),  # 0 → 5 over epochs 50-80
     ]
 
     BATCH_SIZE = 32768
-    EPOCHS = 600
+    EPOCHS = 1000
     LR = 1e-3
     WEIGHT_DECAY = 1e-5
     GRAD_CLIP = 1.0
