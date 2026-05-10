@@ -24,7 +24,7 @@ def test():
     model.load_state_dict(ckpt["model_state"])
     model.eval()
     print(f"Loaded epoch {ckpt['epoch']} val_loss={ckpt['val_loss']:.6f}")
-    print(f"Architecture: MLP  3 -> {' -> '.join(map(str, Config.HIDDEN_LAYERS))} -> 1  (GELU)")
+    print(f"Architecture: 3 -> {' -> '.join(map(str, Config.HIDDEN_LAYERS))} -> 1")
     _, _, test_loader, dataset = get_loaders(Config.HDF5_PATH, compute_stats=False)
     pred_all, true_auto, true_theta, x_all = [], [], [], []
     for x, y, arc, theta in test_loader:
@@ -74,7 +74,7 @@ def test():
     # --- outlier diagnostics (all five outputs) ---
     abs_err = np.abs(true_auto - pred_all)          # (N, 5)
     max_err_per_sample = abs_err.max(axis=1)        # worst output error per sample
-    top_k = 2000
+    top_k = 200
     worst_idx = np.argsort(max_err_per_sample)[-top_k:]
 
     print(f"\nTop-{top_k} outlier samples (ranked by max error across all outputs):")
