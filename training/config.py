@@ -33,7 +33,7 @@ class Config:
 
     INPUT_DIM = 3   # phi1, phi2, d
     # --- plain MLP architecture (GELU, no Fourier, no residuals) ---
-    HIDDEN_LAYERS = [256, 256, 256]
+    HIDDEN_LAYERS = [128, 128]
     ACTIVATION = "gelu"
     USE_LAYER_NORM = False
     DROPOUT = 0.0
@@ -73,7 +73,7 @@ class Config:
     PATIENCE = 600
     MIN_DELTA = 1e-6
     LR_FACTOR = 0.5
-    LR_PATIENCE = 20
+    LR_PATIENCE = 40
     MIN_LR = 1e-6
     LR_THRESHOLD = 1e-4
 
