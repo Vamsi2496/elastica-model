@@ -362,7 +362,6 @@ auto.auto("restart.auto")
 def run_at_point(phi1, phi2, d,
                  hdf5_file      = "data.h5",
                  rtree_prefix   = "index",
-                 base_dir       = None,
                  verbose        = True):
     """
     Given a target point (phi1, phi2, d), find the nearest solution
@@ -387,9 +386,7 @@ def run_at_point(phi1, phi2, d,
     d_values      : list[float]
     hdf5_indices  : list[int]    new row indices written (empty if not converged)
     """
-    base_dir = base_dir or os.path.abspath(os.getcwd())
-    _cleanup_auto_files(base_dir)
-    _copy_data_files_to(base_dir) 
+    base_dir = os.path.abspath(os.getcwd())
 
     hdf5_file     = os.path.join(base_dir, hdf5_file)
     rtree_prefix  = os.path.join(base_dir, rtree_prefix)
@@ -400,6 +397,9 @@ def run_at_point(phi1, phi2, d,
     empty = [], [], [], []   # shorthand for failed returns
 
     # ── Step 1: nearest-neighbour lookup ─────────────────────
+    # Search first — pure HDF5/R-tree reads with no filesystem side-effects.
+    # Cleanup and template copies are deferred until we know a valid initial
+    # guess exists and AUTO actually needs to run.
     print(f"\n  Target: phi1={phi1:.6f}  phi2={phi2:.6f}  d={d:.6f}")
     try:
         params, t_vals, u1_vals, nearest_idx, nearest_dist = \
@@ -428,7 +428,14 @@ def run_at_point(phi1, phi2, d,
               f"without running AUTO.")
         return True, [_np1], [_np2], [_nd], [nearest_idx]
 
-    # ── Step 2: build arrays and write s.initial ─────────────
+    # ── Step 2: prepare working directory, build arrays, write s.initial ─
+    # Only reach here if a valid distant neighbour was found and AUTO is
+    # needed.  Clean up stale outputs from any previous run, then copy in
+    # the template files (el3.f90, c.el3, restart.auto, s.initial).
+    # s.initial is overwritten immediately below with the neighbour solution.
+    _cleanup_auto_files(base_dir)
+    _copy_data_files_to(base_dir)
+
     u2, u3, u4 = _build_solution_arrays(t_vals, u1_vals)
     try:
         _write_s_initial(params, t_vals, u1_vals, u2, u3, u4, dat_file)
