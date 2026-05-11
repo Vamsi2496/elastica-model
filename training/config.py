@@ -24,7 +24,7 @@ class Config:
     SCALAR_NAMES = ["Energy", "Fx", "Fy", "M_left", "M_right"]
 
     # d-slice parameters: keep samples where |d - D_SLICE| <= D_SLICE_TOL
-    D_SLICE = 0.85
+    D_SLICE = 0.95
     D_SLICE_TOL = 0.005
 
     SIGN_FX = -1.0
@@ -33,7 +33,7 @@ class Config:
 
     INPUT_DIM = 3   # phi1, phi2, d
     # --- plain MLP architecture (GELU, no Fourier, no residuals) ---
-    HIDDEN_LAYERS = [128, 128]
+    HIDDEN_LAYERS = [512, 512]
     ACTIVATION = "gelu"
     USE_LAYER_NORM = False
     DROPOUT = 0.0
@@ -65,7 +65,7 @@ class Config:
     ]
 
     BATCH_SIZE = 8192
-    EPOCHS = 3000
+    EPOCHS = 4800
     LR = 1e-3
     WEIGHT_DECAY = 1e-5
     GRAD_CLIP = 1.0
@@ -73,7 +73,7 @@ class Config:
     PATIENCE = 600
     MIN_DELTA = 1e-6
     LR_FACTOR = 0.5
-    LR_PATIENCE = 40
+    LR_PATIENCE = 20
     MIN_LR = 1e-6
     LR_THRESHOLD = 1e-4
 
