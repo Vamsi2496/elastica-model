@@ -24,7 +24,8 @@ def test():
     model.load_state_dict(ckpt["model_state"])
     model.eval()
     print(f"Loaded epoch {ckpt['epoch']} val_loss={ckpt['val_loss']:.6f}")
-    print(f"Architecture: 3 -> {' -> '.join(map(str, Config.HIDDEN_LAYERS))} -> 1")
+    print(f"d-slice: {Config.D_SLICE} ± {Config.D_SLICE_TOL}")
+    print(f"Architecture: MLP  3 -> {' -> '.join(map(str, Config.HIDDEN_LAYERS))} -> 1  (GELU)")
     _, _, test_loader, dataset = get_loaders(Config.HDF5_PATH, compute_stats=False)
     pred_all, true_auto, true_theta, x_all = [], [], [], []
     for x, y, arc, theta in test_loader:
@@ -53,28 +54,24 @@ def test():
     true_theta = np.concatenate(true_theta)
     x_all = np.concatenate(x_all)
     print("=" * 70)
-    print(f"{'Output':<12} {'AUTO R²':>9} {'AUTO RMSE':>12} {'AUTO MaxErr':>12} ")
+    print(f"{'Output':<12} {'AUTO R²':>9} {'AUTO RMSE':>12} {'AUTO MaxErr':>12}")
     print("=" * 70)
     results = {"AUTO": {}}
     for i, name in enumerate(Config.SCALAR_NAMES):
         r2_a = r2(true_auto[:, i], pred_all[:, i])
         rmse_a = np.sqrt(np.mean((true_auto[:, i] - pred_all[:, i]) ** 2))
         maxerr_a = np.max(np.abs(true_auto[:, i] - pred_all[:, i]))
-        r2_t = r2(true_theta[:, i], pred_all[:, i])
-        rmse_t = np.sqrt(np.mean((true_theta[:, i] - pred_all[:, i]) ** 2))
-        maxerr_t = np.max(np.abs(true_theta[:, i] - pred_all[:, i]))
-        print(f"{name:<12} {r2_a:>9.5f} {rmse_a:>12.4e} {maxerr_a:>12.4e} ")
+        print(f"{name:<12} {r2_a:>9.5f} {rmse_a:>12.4e} {maxerr_a:>12.4e}")
         results["AUTO"][name] = {"R2": float(r2_a), "RMSE": float(rmse_a), "MaxErr": float(maxerr_a)}
-        
     print("=" * 70)
     with open("test_results.json", "w") as f:
         json.dump(results, f, indent=2)
     print("Saved → test_results.json")
 
-    # --- outlier diagnostics (all five outputs) ---
-    abs_err = np.abs(true_auto - pred_all)          # (N, 5)
-    max_err_per_sample = abs_err.max(axis=1)        # worst output error per sample
-    top_k = 200
+    # --- outlier diagnostics ---
+    abs_err = np.abs(true_auto - pred_all)
+    max_err_per_sample = abs_err.max(axis=1)
+    top_k = 2000
     worst_idx = np.argsort(max_err_per_sample)[-top_k:]
 
     print(f"\nTop-{top_k} outlier samples (ranked by max error across all outputs):")

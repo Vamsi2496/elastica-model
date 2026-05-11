@@ -9,47 +9,70 @@ class ElasticaDataset:
     def __init__(self, path: str, compute_stats: bool = True):
         self.path = path
         with h5py.File(path, "r") as f:
-            self.N = f[Config.KEY_PHI1].shape[0]
-            print(f"Total samples in file: {self.N:,}")
-            print("Loading full dataset into memory …")
+            total = f[Config.KEY_PHI1].shape[0]
+            print(f"Total samples in file: {total:,}")
+            print(f"Filtering d-slice: {Config.D_SLICE} ± {Config.D_SLICE_TOL} …")
             phi1 = f[Config.KEY_PHI1][:].astype(np.float32)
             phi2 = f[Config.KEY_PHI2][:].astype(np.float32)
-            d = f[Config.KEY_D][:].astype(np.float32)
-            arc = np.vstack(f[Config.KEY_ARC][:]).astype(np.float32)
+            d    = f[Config.KEY_D][:].astype(np.float32)
+            arc  = np.vstack(f[Config.KEY_ARC][:]).astype(np.float32)
             theta = np.vstack(f[Config.KEY_THETA][:]).astype(np.float32)
             params = f[Config.KEY_PARAMS][:].astype(np.float32)
-        X = np.stack([phi1, phi2, d], axis=1)
-        Y = np.stack([params[:, Config.IDX_ENERGY], params[:, Config.IDX_FX], params[:, Config.IDX_FY], params[:, Config.IDX_M1], params[:, Config.IDX_M2]], axis=1)
+
+        mask = np.abs(d - Config.D_SLICE) <= Config.D_SLICE_TOL
+        phi1   = phi1[mask]
+        phi2   = phi2[mask]
+        d_filt = d[mask]
+        arc    = arc[mask]
+        theta  = theta[mask]
+        params = params[mask]
+        self.N = int(mask.sum())
+        print(f"Samples after d-slice: {self.N:,} ({100*self.N/total:.1f}% of total)")
+
+        # d is no longer an input; store its mean as a scalar for Fy = (MR-ML)/d
+        X = np.stack([phi1, phi2, d_filt], axis=1)
+        Y = np.stack([params[:, Config.IDX_ENERGY],
+                      params[:, Config.IDX_FX],
+                      params[:, Config.IDX_FY],
+                      params[:, Config.IDX_M1],
+                      params[:, Config.IDX_M2]], axis=1)
+
         if compute_stats:
             print("Computing normalization statistics …")
             self.x_mean = X.mean(0).astype(np.float32)
-            self.x_std = X.std(0).astype(np.float32) + 1e-8
+            self.x_std  = X.std(0).astype(np.float32) + 1e-8
             self.y_mean = Y.mean(0).astype(np.float32)
-            self.y_std = Y.std(0).astype(np.float32) + 1e-8
+            self.y_std  = Y.std(0).astype(np.float32) + 1e-8
             self.t_mean = float(theta.mean())
-            self.t_std = float(theta.std()) + 1e-8
+            self.t_std  = float(theta.std()) + 1e-8
             self.arc_max = float(arc.max())
-            np.savez(Config.NORM_STATS, x_mean=self.x_mean, x_std=self.x_std, y_mean=self.y_mean, y_std=self.y_std, t_mean=self.t_mean, t_std=self.t_std, arc_max=self.arc_max)
+            np.savez(Config.NORM_STATS,
+                     x_mean=self.x_mean, x_std=self.x_std,
+                     y_mean=self.y_mean, y_std=self.y_std,
+                     t_mean=self.t_mean, t_std=self.t_std,
+                     arc_max=self.arc_max)
             print(f"Stats saved → {Config.NORM_STATS}")
         else:
             st = np.load(Config.NORM_STATS)
-            self.x_mean = st["x_mean"]
-            self.x_std = st["x_std"]
-            self.y_mean = st["y_mean"]
-            self.y_std = st["y_std"]
-            self.t_mean = float(st["t_mean"])
-            self.t_std = float(st["t_std"])
+            self.x_mean  = st["x_mean"]
+            self.x_std   = st["x_std"]
+            self.y_mean  = st["y_mean"]
+            self.y_std   = st["y_std"]
+            self.t_mean  = float(st["t_mean"])
+            self.t_std   = float(st["t_std"])
             self.arc_max = float(st["arc_max"])
             print(f"Norm stats loaded ← {Config.NORM_STATS}")
+
         X = (X - self.x_mean) / self.x_std
         Y = (Y - self.y_mean) / self.y_std
-        arc = arc / self.arc_max
+        arc   = arc / self.arc_max
         theta = (theta - self.t_mean) / self.t_std
+
         device = Config.DEVICE
         print(f"Moving full dataset to {device} …")
-        self.x = torch.from_numpy(X).to(device)
-        self.y = torch.from_numpy(Y).to(device)
-        self.arc = torch.from_numpy(arc).to(device)
+        self.x     = torch.from_numpy(X).to(device)
+        self.y     = torch.from_numpy(Y).to(device)
+        self.arc   = torch.from_numpy(arc).to(device)
         self.theta = torch.from_numpy(theta).to(device)
 
 

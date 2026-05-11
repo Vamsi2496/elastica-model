@@ -13,6 +13,41 @@ from model import ElasticaEnergyNet
 
 warnings.filterwarnings("ignore", message="Detected call of.*lr_scheduler.step.*before.*optimizer.step", category=UserWarning)
 
+# Capture target weights once at import time, before any epoch mutates Config.
+_SCHEDULE_TARGETS = {attr: getattr(Config, attr) for attr, *_ in Config.LOSS_SCHEDULE}
+
+
+def apply_schedule(epoch: int) -> tuple[str, bool]:
+    """Set Config weights according to LOSS_SCHEDULE.
+
+    Returns:
+        (status_tag, new_component_introduced)
+
+        new_component_introduced is True on the exact epoch a component
+        transitions from 0 to non-zero weight.  The caller must reset the
+        LR scheduler's internal best on such epochs so ReduceLROnPlateau
+        does not compare the new multi-component loss against the old
+        energy-only minimum (which would otherwise trigger runaway LR decay).
+    """
+    tags = []
+    new_component = False
+    for attr, intro, ramp, init_val in Config.LOSS_SCHEDULE:
+        target = _SCHEDULE_TARGETS[attr]
+        old_val = getattr(Config, attr)
+        if epoch < intro:
+            new_val = 0.0
+        elif ramp == 0 or epoch >= intro + ramp:
+            new_val = target
+        else:
+            frac = (epoch - intro) / ramp
+            new_val = init_val + frac * (target - init_val)
+        if old_val == 0.0 and new_val > 0.0:
+            new_component = True
+        setattr(Config, attr, new_val)
+        tags.append(f"{attr}={new_val:.2g}")
+    tag = " | " + "  ".join(tags) if tags else ""
+    return tag, new_component
+
 
 def evaluate(model, loader, criterion):
     model.eval()
@@ -53,7 +88,8 @@ def train():
     os.makedirs(Config.CKPT_DIR, exist_ok=True)
     device = Config.DEVICE
     print(f"Device: {device}")
-    print(f"Architecture: 3 -> {' -> '.join(map(str, Config.HIDDEN_LAYERS))} -> 1")
+    print(f"d-slice: {Config.D_SLICE} ± {Config.D_SLICE_TOL}")
+    print(f"Architecture: MLP  3 -> {' -> '.join(map(str, Config.HIDDEN_LAYERS))} -> 1  (GELU)")
     if Config.USE_GPU:
         print(f"GPU: {torch.cuda.get_device_name(0)}")
         print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
@@ -84,11 +120,26 @@ def train():
         print(f"Resumed from epoch {ckpt['epoch']} (best_val={best_val:.6f}, no_improve={no_improve_count})")
 
     for epoch in range(start_epoch, Config.EPOCHS + 1):
-        # curriculum: linearly ramp energy weight down and moment weight up
-        if epoch <= Config.CURRICULUM_EPOCHS:
-            frac = epoch / Config.CURRICULUM_EPOCHS
-            Config.W_ENERGY_LABEL = Config.W_ENERGY_LABEL_INIT + frac * (20.0 - Config.W_ENERGY_LABEL_INIT)
-            Config.M_WEIGHT = Config.M_WEIGHT_INIT + frac * (10.0 - Config.M_WEIGHT_INIT)
+        sched_tag, new_component = apply_schedule(epoch)
+
+        # --- LR-scheduler reset on curriculum change ----------------------------
+        # When a new loss component is switched on, the total loss jumps up.
+        # ReduceLROnPlateau would then compare every subsequent epoch against the
+        # old (lower) energy-only best, counting every epoch as "bad" and halving
+        # the LR every patience+1 epochs until MIN_LR is hit.  We prevent this by
+        # resetting the scheduler's internal best and the LR itself to the initial
+        # value so the model gets a fresh learning-rate window for the new task.
+        if new_component:
+            lr_now = optimizer.param_groups[0]["lr"]
+            for pg in optimizer.param_groups:
+                pg["lr"] = Config.LR
+            scheduler.best = float("inf")
+            scheduler.num_bad_epochs = 0
+            best_val = float("inf")
+            no_improve_count = 0
+            print(f"*** New loss component introduced at epoch {epoch}: "
+                  f"LR reset {lr_now:.2e} -> {Config.LR:.2e}, scheduler best reset ***")
+        # ------------------------------------------------------------------------
 
         model.train()
         epoch_loss = 0.0
@@ -102,18 +153,17 @@ def train():
             epoch_loss += loss.item()
             if step % Config.LOG_INTERVAL == 0:
                 lr = optimizer.param_groups[0]["lr"]
-                print(f"Ep {epoch:3d} | step {step:4d} | total={bd['total']:.5f} | energy={bd['energy']:.5f} | scalar={bd['scalar']:.5f} | Kreg={bd['stiffness']:.5f} | lr={lr:.2e}")
+                print(f"Ep {epoch:3d} | step {step:4d} | total={bd['total']:.5f} | energy={bd['energy']:.5f} | scalar={bd['scalar']:.5f} | lr={lr:.2e}")
         val_loss, val_bd = evaluate(model, val_loader, criterion)
         scheduler.step(val_loss)
         print_validation_sample(model, val_loader, dataset, sample_idx=0)
         avg_train = epoch_loss / len(train_loader)
         elapsed = time.time() - t0
-        curriculum_tag = f" | W_E={Config.W_ENERGY_LABEL:.1f} W_M={Config.M_WEIGHT:.1f}" if epoch <= Config.CURRICULUM_EPOCHS else ""
         if Config.USE_GPU:
             mem = torch.cuda.memory_reserved(0) / 1e9
-            print(f"Epoch {epoch:3d}/{Config.EPOCHS} | train={avg_train:.5f} | val={val_loss:.5f} | time={elapsed:.1f}s | VRAM={mem:.2f}GB{curriculum_tag}")
+            print(f"Epoch {epoch:3d}/{Config.EPOCHS} | train={avg_train:.5f} | val={val_loss:.5f} | time={elapsed:.1f}s | VRAM={mem:.2f}GB{sched_tag}")
         else:
-            print(f"Epoch {epoch:3d}/{Config.EPOCHS} | train={avg_train:.5f} | val={val_loss:.5f} | time={elapsed:.1f}s{curriculum_tag}")
+            print(f"Epoch {epoch:3d}/{Config.EPOCHS} | train={avg_train:.5f} | val={val_loss:.5f} | time={elapsed:.1f}s{sched_tag}")
         history["train"].append(avg_train)
         history["val"].append(val_loss)
         history["breakdown"].append(val_bd)

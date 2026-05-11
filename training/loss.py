@@ -80,24 +80,26 @@ class ElasticaLoss:
         U_theta_norm = self._phys_to_norm(U_theta_phys, 0, device)
         loss_energy_label = F.mse_loss(U_pred_norm, energy_true)
         loss_energy_theta = F.mse_loss(U_pred_norm, U_theta_norm)
-        
+
         ML_phys = Config.SIGN_M1 * self._grad_norm_to_phys(g[:, 0], 0, device) * (180 / np.pi)
         MR_phys = Config.SIGN_M2 * self._grad_norm_to_phys(g[:, 1], 1, device) * (180 / np.pi)
         Fx_phys = Config.SIGN_FX * self._grad_norm_to_phys(g[:, 2], 2, device)
         Fy_phys = (MR_phys - ML_phys) / d_phys
-        
+
         fx_pred = self._phys_to_norm(Fx_phys, 1, device)
         fy_pred = self._phys_to_norm(Fy_phys, 2, device)
         m1_pred = self._phys_to_norm(ML_phys, 3, device)
         m2_pred = self._phys_to_norm(MR_phys, 4, device)
-        
-        w = torch.tensor([Config.FX_WEIGHT, Config.FY_WEIGHT, Config.M_WEIGHT, Config.M_WEIGHT], dtype=torch.float32, device=device)
+
         mse_fx = F.mse_loss(fx_pred, fx_true)
         mse_fy = F.mse_loss(fy_pred, fy_true)
         mse_m1 = F.mse_loss(m1_pred, m1_true)
         mse_m2 = F.mse_loss(m2_pred, m2_true)
-        loss_scalar = w[0] * mse_fx + w[1] * mse_fy + w[2] * mse_m1 + w[3] * mse_m2
-        
+        l4_fx = ((fx_pred - fx_true) ** 4).mean()
+        loss_scalar = (Config.FX_WEIGHT * mse_fx + Config.FY_WEIGHT * mse_fy
+                       + Config.M_WEIGHT * mse_m1 + Config.M_WEIGHT * mse_m2
+                       + Config.FX_L4_WEIGHT * l4_fx)
+
         loss_stiff = torch.tensor(0.0, device=device)
         if need_stiffness and Config.LAMBDA_STIFF > 0.0:
             rows = []
@@ -106,6 +108,20 @@ class ElasticaLoss:
                 rows.append(row.unsqueeze(1))
             H = torch.cat(rows, dim=1)
             loss_stiff = (H**2).mean()
-        
-        total = Config.W_ENERGY_LABEL * loss_energy_label + Config.W_ENERGY_THETA * loss_energy_theta + Config.W_SCALAR * loss_scalar + Config.LAMBDA_STIFF * loss_stiff
-        return total, {"energy": float(loss_energy_label.item()), "energy_theta": float(loss_energy_theta.item()), "Fx": float(mse_fx.item()), "Fy": float(mse_fy.item()), "M_left": float(mse_m1.item()), "M_right": float(mse_m2.item()), "scalar": float(loss_scalar.item()), "stiffness": float(loss_stiff.item()), "total": float(total.item())}
+
+        total = (Config.W_ENERGY_LABEL * loss_energy_label
+                 + Config.W_ENERGY_THETA * loss_energy_theta
+                 + Config.W_SCALAR * loss_scalar
+                 + Config.LAMBDA_STIFF * loss_stiff)
+        return total, {
+            "energy": float(loss_energy_label.item()),
+            "energy_theta": float(loss_energy_theta.item()),
+            "Fx": float(mse_fx.item()),
+            "Fx_L4": float(l4_fx.item()),
+            "Fy": float(mse_fy.item()),
+            "M_left": float(mse_m1.item()),
+            "M_right": float(mse_m2.item()),
+            "scalar": float(loss_scalar.item()),
+            "stiffness": float(loss_stiff.item()),
+            "total": float(total.item()),
+        }
