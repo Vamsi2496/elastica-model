@@ -145,8 +145,9 @@ if __name__ == "__main__":
     predictor = EnergyPredictor()
     test_cases = [(0.0, 10.0, 0.82), (12.0765, 20.9235, 0.95), (10.0, 0.0, 0.63)]
     #for phi1, phi2, d in test_cases:
-    for i in range(3):
+    for i in range(6):
         
+        print(f"\n{'='*60}")
         phi1 = float(input("Enter phi1: "))
         phi2 = float(input("Enter phi2: "))
         d = float(input("Enter d: "))
@@ -173,17 +174,14 @@ if __name__ == "__main__":
                 Fy         = params[1]
                 M1         = params[6]       # Moment at left end
                 M2         = params[7]       # Moment at right end
+            print("\n")
             print(f"  Auto_Energy={PE:.6f}  Fx={Fx:.6f}  Fy={Fy:.6f}")
             print(f"  ML={M1:.6f}  MR={M2:.6f}")
-            
-            print(f"  Error_Energy = {(res['Energy'] - PE):+.6e} ({100 * abs((res['Energy'] - PE) / PE):.3f}%)")
-            print(f"  Error_Fx     = {(res['Fx'] - Fx):+.6e} ({100 * abs((res['Fx'] - Fx) / Fx):.3f}%)")
-            print(f"  Error_Fy     = {(res['Fy'] - Fy):+.6e} ({100 * abs((res['Fy'] - Fy) / Fy):.3f}%)")
-            print(f"  Error_ML     = {(res['M_left'] - M1):+.6e} ({100 * abs((res['M_left'] - M1) / M1):.3f}%)")
-            print(f"  Error_MR     = {(res['M_right'] - M2):+.6e} ({100 * abs((res['M_right'] - M2) / M2):.3f}%)")
+            print("\n")
+            print(f"  Error_Energy = {(res['Energy'] - PE):+.6f} ({100 * abs((res['Energy'] - PE) / PE):.3f}%)")
+            print(f"  Error_Fx     = {(res['Fx'] - Fx):+.6f} ({100 * abs((res['Fx'] - Fx) / Fx):.3f}%)")
+            print(f"  Error_Fy     = {(res['Fy'] - Fy):+.6f} ({100 * abs((res['Fy'] - Fy) / Fy):.3f}%)")
+            print(f"  Error_ML     = {(res['M_left'] - M1):+.6f} ({100 * abs((res['M_left'] - M1) / M1):.3f}%)")
+            print(f"  Error_MR     = {(res['M_right'] - M2):+.6f} ({100 * abs((res['M_right'] - M2) / M2):.3f}%)")
             #print(f"parameters={params}")
 
-        #_print_jacobian("Sensitivity — autograd (unsupervised 2nd deriv, indicative only)",
-         #               predictor.sensitivity(phi1, phi2, d))
-        #_print_jacobian("Sensitivity — finite diff on trained forces (more reliable)",
-         #               predictor.sensitivity_fd(phi1, phi2, d))
