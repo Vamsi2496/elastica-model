@@ -88,7 +88,8 @@ def train():
     os.makedirs(Config.CKPT_DIR, exist_ok=True)
     device = Config.DEVICE
     print(f"Device: {device}")
-    print(f"d-slice: {Config.D_SLICE} ± {Config.D_SLICE_TOL}")
+    d_info = f"d-slice: {Config.D_SLICE}±{Config.D_SLICE_TOL}" if Config.D_SLICE is not None else "full dataset"
+    print(f"Data: {d_info}  |  weighted_d={Config.WEIGHTED_D_SAMPLING}")
     print(f"Architecture: MLP  3 -> {' -> '.join(map(str, Config.HIDDEN_LAYERS))} -> 1  (GELU)")
     if Config.USE_GPU:
         print(f"GPU: {torch.cuda.get_device_name(0)}")

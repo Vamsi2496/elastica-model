@@ -1,7 +1,12 @@
 import json
 import os
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
+
+# Allow running from any working directory
+sys.path.insert(0, os.path.dirname(__file__))
+from config import Config
 
 os.makedirs("plots", exist_ok=True)
 
@@ -12,37 +17,104 @@ with open("test_results.json", "r") as f:
     test_results = json.load(f)
 
 train_loss = history.get("train", [])
-val_loss = history.get("val", [])
-breakdown = history.get("breakdown", [])
-epochs = list(range(1, len(train_loss) + 1))
+val_loss   = history.get("val", [])
+breakdown  = history.get("breakdown", [])
+epochs     = list(range(1, len(train_loss) + 1))
 
 if len(epochs) == 0:
     raise ValueError("training_history.json contains no epochs.")
 
-mid = max(1, len(epochs) // 2)
+# ------------------------------------------------------------------
+# Which breakdown components are active (weight > 0 in current config)?
+# Components whose weight is exactly 0 are not plotted.
+# ------------------------------------------------------------------
+W = Config.W_SCALAR  # scalar sub-loss multiplier
 
-# ------------------------------------------------------------
-# 1) Total loss curves
-# ------------------------------------------------------------
-fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+COMPONENT_WEIGHTS = {
+    "energy":       Config.W_ENERGY_LABEL,
+    "energy_theta": Config.W_ENERGY_THETA,
+    "Fx":           W * Config.FX_WEIGHT,
+    "Fx_L4":        W * Config.FX_L4_WEIGHT,
+    "Fy":           W * Config.FY_WEIGHT,
+    #"Fy":           1.0,  # always plot Fy
+    "M_left":       W * Config.M_WEIGHT,
+    "M_right":      W * Config.M_WEIGHT,
+    "scalar":       W,    # aggregate of all scalar sub-losses
+    "stiffness":    Config.LAMBDA_STIFF,
+    "total":        1.0,  # always plot total
+}
+
+COMPONENT_STYLE = {
+    "energy":       ("Energy ",  "black",         "-"),
+    "energy_theta": ("Energy θ",      "dimgray",        "--"),
+    "Fx":           ("Fx",            "steelblue",      "-"),
+    "Fx_L4":        ("Fx L4",         "cornflowerblue", "--"),
+    "Fy":           ("Fy",            "darkorange",     "-"),
+    "M_left":       ("M_left",        "green",          "-"),
+    "M_right":      ("M_right",       "purple",         "--"),
+    "scalar":       ("Scalar total",  "gray",           ":"),
+    "stiffness":    ("Stiffness",     "saddlebrown",    "--"),
+    "total":        ("Total",         "brown",          "-"),
+}
+
+def active_keys(bd_list):
+    """Keys that are both weighted and present in the recorded history."""
+    return [
+        k for k, w in COMPONENT_WEIGHTS.items()
+        if w > 0 and any(k in bd for bd in bd_list)
+    ]
+
+active = active_keys(breakdown)
+
+# ------------------------------------------------------------------
+# Schedule markers — vertical lines + ramp shading at each scheduled
+# component's intro epoch, coloured to match the component's curve.
+# ------------------------------------------------------------------
+ATTR_TO_PRIMARY_KEY = {
+    "W_ENERGY_LABEL": "energy",
+    "W_ENERGY_THETA": "energy_theta",
+    "FX_WEIGHT":      "Fx",
+    "FY_WEIGHT":      "Fy",
+    "M_WEIGHT":       "M_left",   # M_left and M_right share this weight
+    "FX_L4_WEIGHT":   "Fx_L4",
+    "LAMBDA_STIFF":   "stiffness",
+}
+
+def add_schedule_markers(ax, x_min: int, x_max: int) -> None:
+    """For each scheduled entry whose intro epoch is in [x_min, x_max]:
+    - draw a dashed vertical line at intro_epoch (component colour)
+    - shade [intro, intro + ramp] to mark the ramp window
+    - place a rotated label naming the introduced weight
+    """
+    for attr, intro, ramp, _init in Config.LOSS_SCHEDULE:
+        if intro < x_min or intro > x_max:
+            continue
+        key   = ATTR_TO_PRIMARY_KEY.get(attr)
+        color = COMPONENT_STYLE[key][1] if key in COMPONENT_STYLE else "gray"
+
+        ax.axvline(intro, color=color, linestyle=":", linewidth=1.2, alpha=0.7)
+        if ramp > 0:
+            ax.axvspan(intro, min(intro + ramp, x_max), color=color, alpha=0.08)
+
+        ax.text(
+            intro, 0.97, f" {attr} on",
+            color=color, fontsize=8, rotation=90,
+            va="top", ha="left", alpha=0.85,
+            transform=ax.get_xaxis_transform(),  # x in data coords, y in axis fraction
+        )
+
+# ------------------------------------------------------------------
+# 1) Total loss curves — single plot (full history)
+# ------------------------------------------------------------------
+fig, ax = plt.subplots(figsize=(8, 5))
 fig.suptitle("Training History", fontsize=14, fontweight="bold")
 
-ax = axes[0]
 ax.plot(epochs, train_loss, label="Train", color="steelblue", linewidth=2)
-ax.plot(epochs, val_loss, label="Val", color="tomato", linewidth=2, linestyle="--")
+ax.plot(epochs, val_loss,   label="Val",   color="tomato",    linewidth=2, linestyle="--")
 ax.set_xlabel("Epoch")
 ax.set_ylabel("Total Loss")
 ax.set_title("Train vs Validation Loss")
 ax.set_yscale("log")
-ax.legend()
-ax.grid(True, alpha=0.3)
-
-ax = axes[1]
-ax.plot(epochs[mid - 1:], train_loss[mid - 1:], label="Train", color="steelblue", linewidth=2)
-ax.plot(epochs[mid - 1:], val_loss[mid - 1:], label="Val", color="tomato", linewidth=2, linestyle="--")
-ax.set_xlabel("Epoch")
-ax.set_ylabel("Total Loss")
-ax.set_title(f"Zoomed — Last {len(epochs) - mid + 1} Epochs")
 ax.legend()
 ax.grid(True, alpha=0.3)
 
@@ -51,45 +123,22 @@ plt.savefig("plots/loss_curves.png", dpi=150, bbox_inches="tight")
 plt.close()
 print("Saved → plots/loss_curves.png")
 
-# ------------------------------------------------------------
-# 2) Validation breakdown curves
-#    Excluding energy_theta and stiffness/K-reg
-# ------------------------------------------------------------
-breakdown_keys = {
-    "energy": ("Energy", "black"),
-    "Fx": ("Fx", "steelblue"),
-    "Fy": ("Fy", "darkorange"),
-    "M_left": ("M_left", "green"),
-    "M_right": ("M_right", "purple"),
-    "scalar": ("Scalar total", "gray"),
-    "total": ("Total", "brown"),
-}
+# ------------------------------------------------------------------
+# 2) Validation breakdown curves — single plot (all epochs)
+# ------------------------------------------------------------------
+fig, ax = plt.subplots(figsize=(10, 5))
+fig.suptitle("Validation Loss Breakdown", fontsize=13, fontweight="bold")
 
-available_keys = [k for k in breakdown_keys if any(k in bd for bd in breakdown)]
-
-fig, axes = plt.subplots(1, 2, figsize=(16, 5))
-fig.suptitle("Validation Loss Breakdown", fontsize=14, fontweight="bold")
-
-ax = axes[0]
-for key in available_keys:
-    label, color = breakdown_keys[key]
+for key in active:
+    label, color, ls = COMPONENT_STYLE[key]
     vals = [bd.get(key, 0.0) for bd in breakdown]
-    ax.plot(epochs, vals, label=label, color=color, linewidth=1.8)
+    ax.plot(epochs, vals, label=label, color=color, linestyle=ls, linewidth=1.8)
+
+add_schedule_markers(ax, 1, len(epochs))
 ax.set_xlabel("Epoch")
 ax.set_ylabel("Loss Value")
-ax.set_title("All Components (log scale)")
+ax.set_title("All Epochs (log scale)")
 ax.set_yscale("log")
-ax.legend(fontsize=9, ncol=2)
-ax.grid(True, alpha=0.3)
-
-ax = axes[1]
-for key in available_keys:
-    label, color = breakdown_keys[key]
-    vals = [bd.get(key, 0.0) for bd in breakdown]
-    ax.plot(epochs[mid - 1:], vals[mid - 1:], label=label, color=color, linewidth=1.8)
-ax.set_xlabel("Epoch")
-ax.set_ylabel("Loss Value")
-ax.set_title(f"Zoomed — Last {len(epochs) - mid + 1} Epochs")
 ax.legend(fontsize=9, ncol=2)
 ax.grid(True, alpha=0.3)
 
@@ -98,16 +147,16 @@ plt.savefig("plots/loss_breakdown.png", dpi=150, bbox_inches="tight")
 plt.close()
 print("Saved → plots/loss_breakdown.png")
 
-# ------------------------------------------------------------
-# 3) AUTO test metrics
-# ------------------------------------------------------------
+# ------------------------------------------------------------------
+# 3) Test R² per output
+# ------------------------------------------------------------------
 auto_results = test_results.get("AUTO", {})
 if not auto_results:
     raise ValueError("test_results.json does not contain 'AUTO' results.")
 
-names = list(auto_results.keys())
-r2vals = [auto_results[n]["R2"] for n in names]
-rmse_vals = [auto_results[n]["RMSE"] for n in names]
+names       = list(auto_results.keys())
+r2vals      = [auto_results[n]["R2"]     for n in names]
+rmse_vals   = [auto_results[n]["RMSE"]   for n in names]
 maxerr_vals = [auto_results[n]["MaxErr"] for n in names]
 
 bar_colors = [
@@ -118,7 +167,7 @@ bar_colors = [
 fig, ax = plt.subplots(figsize=(8, 5))
 bars = ax.bar(names, r2vals, color=bar_colors, edgecolor="black", linewidth=0.8, width=0.55)
 ax.axhline(y=0.95, color="green", linestyle="--", linewidth=1.2, label="R² = 0.95")
-ax.axhline(y=0.99, color="blue", linestyle=":", linewidth=1.2, label="R² = 0.99")
+ax.axhline(y=0.99, color="blue",  linestyle=":",  linewidth=1.2, label="R² = 0.99")
 ax.set_ylim(min(0.0, min(r2vals) - 0.05), 1.02)
 ax.set_ylabel("R² Score")
 ax.set_title("Test R² per Output (AUTO)")
@@ -130,9 +179,7 @@ for bar, val in zip(bars, r2vals):
         bar.get_x() + bar.get_width() / 2,
         bar.get_height() + 0.01,
         f"{val:.4f}",
-        ha="center",
-        va="bottom",
-        fontsize=9,
+        ha="center", va="bottom", fontsize=9,
     )
 
 plt.tight_layout()
@@ -140,15 +187,15 @@ plt.savefig("plots/test_r2.png", dpi=150, bbox_inches="tight")
 plt.close()
 print("Saved → plots/test_r2.png")
 
-# ------------------------------------------------------------
-# 4) AUTO RMSE / Max Error
-# ------------------------------------------------------------
+# ------------------------------------------------------------------
+# 4) Test RMSE / Max Error
+# ------------------------------------------------------------------
 x = np.arange(len(names))
 w = 0.35
 
 fig, ax = plt.subplots(figsize=(10, 5))
-b1 = ax.bar(x - w / 2, rmse_vals, w, label="RMSE", color="steelblue", edgecolor="black", linewidth=0.8)
-b2 = ax.bar(x + w / 2, maxerr_vals, w, label="Max Err", color="tomato", edgecolor="black", linewidth=0.8)
+b1 = ax.bar(x - w / 2, rmse_vals,   w, label="RMSE",    color="steelblue", edgecolor="black", linewidth=0.8)
+b2 = ax.bar(x + w / 2, maxerr_vals, w, label="Max Err", color="tomato",    edgecolor="black", linewidth=0.8)
 
 ax.set_xticks(x)
 ax.set_xticklabels(names)
@@ -163,9 +210,7 @@ for bar in list(b1) + list(b2):
         bar.get_x() + bar.get_width() / 2,
         h * 1.02 if h != 0 else 0.01,
         f"{h:.3f}",
-        ha="center",
-        va="bottom",
-        fontsize=8,
+        ha="center", va="bottom", fontsize=8,
     )
 
 plt.tight_layout()
@@ -173,27 +218,19 @@ plt.savefig("plots/test_errors.png", dpi=150, bbox_inches="tight")
 plt.close()
 print("Saved → plots/test_errors.png")
 
-# ------------------------------------------------------------
-# 5) Per-component convergence
-#    Excluding energy_theta and stiffness/K-reg
-# ------------------------------------------------------------
+# ------------------------------------------------------------------
+# 5) Per-component convergence (active components only, full history)
+# ------------------------------------------------------------------
 fig, ax = plt.subplots(figsize=(11, 4))
-for key, color, label in [
-    ("energy", "black", "Energy "),
-    ("Fx", "steelblue", "Fx"),
-    ("Fy", "darkorange", "Fy"),
-    ("M_left", "green", "M_left"),
-    ("M_right", "purple", "M_right"),
-    ("scalar", "gray", "Scalar"),
-    ("total", "brown", "Total"),
-]:
-    if any(key in bd for bd in breakdown):
-        vals = [bd.get(key, 0.0) for bd in breakdown]
-        ax.plot(epochs, vals, label=label, color=color, linewidth=1.8)
+for key in active:
+    label, color, ls = COMPONENT_STYLE[key]
+    vals = [bd.get(key, 0.0) for bd in breakdown]
+    ax.plot(epochs, vals, label=label, color=color, linestyle=ls, linewidth=1.8)
 
+add_schedule_markers(ax, 1, len(epochs))
 ax.set_xlabel("Epoch")
 ax.set_ylabel("Loss")
-ax.set_title("Energy / Force / Moment Loss Convergence")
+ax.set_title("Loss Component Convergence")
 ax.set_yscale("log")
 ax.legend(ncol=2)
 ax.grid(True, alpha=0.3)

@@ -4,6 +4,12 @@ from config import Config
 
 
 class ElasticaEnergyNet(nn.Module):
+    """Plain MLP energy network: (φ₁, φ₂, d) → U.
+
+    Hidden layers use GELU activation (smooth, good for autograd derivatives).
+    Output layer is linear (energy is unconstrained).
+    """
+
     def __init__(self, hidden_layers=None):
         super().__init__()
         hidden_layers = hidden_layers or Config.HIDDEN_LAYERS
@@ -11,11 +17,7 @@ class ElasticaEnergyNet(nn.Module):
         layers = []
         for i in range(len(dims) - 2):
             layers.append(nn.Linear(dims[i], dims[i + 1]))
-            if Config.USE_LAYER_NORM:
-                layers.append(nn.LayerNorm(dims[i + 1]))
-            layers.append(nn.GELU() if Config.ACTIVATION.lower() == "gelu" else nn.ReLU())
-            if Config.DROPOUT > 0.0:
-                layers.append(nn.Dropout(Config.DROPOUT))
+            layers.append(nn.GELU())
         layers.append(nn.Linear(dims[-2], dims[-1]))
         self.net = nn.Sequential(*layers)
         self._init_weights()
@@ -23,20 +25,21 @@ class ElasticaEnergyNet(nn.Module):
     def _init_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Linear):
-                nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
+                # GELU has near-unit gain, so "linear" is the correct Kaiming mode
+                nn.init.kaiming_normal_(m.weight, nonlinearity="linear")
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x).squeeze(-1)
 
-    def energy_and_grad(self, x, create_graph=False):
+    def energy_and_grad(self, x: torch.Tensor, create_graph: bool = False):
         x = x.requires_grad_(True)
         U = self.forward(x)
         g = torch.autograd.grad(U.sum(), x, create_graph=create_graph, retain_graph=True)[0]
         return U, g
 
-    def hessian(self, x):
+    def hessian(self, x: torch.Tensor) -> torch.Tensor:
         x = x.requires_grad_(True)
         _, g = self.energy_and_grad(x, create_graph=True)
         B = x.shape[0]
@@ -46,5 +49,5 @@ class ElasticaEnergyNet(nn.Module):
             H[:, i, :] = row
         return H
 
-    def count_params(self):
+    def count_params(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
