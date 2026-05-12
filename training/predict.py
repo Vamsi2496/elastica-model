@@ -1,6 +1,8 @@
 import numpy as np
 import torch
 import h5py
+from scipy.integrate import cumulative_trapezoid
+import matplotlib.pyplot as plt
 
 from config import Config
 from model import ElasticaEnergyNet
@@ -174,9 +176,25 @@ if __name__ == "__main__":
                 Fy         = params[1]
                 M1         = params[6]       # Moment at left end
                 M2         = params[7]       # Moment at right end
+                theta      = f["u1"][idx]
+                s          = f["t"][idx]
             print("\n")
             print(f"  Auto_Energy={PE:.6f}  Fx={Fx:.6f}  Fy={Fy:.6f}")
             print(f"  ML={M1:.6f}  MR={M2:.6f}")
+            """#print(f"  theta={theta}")
+            xcal = cumulative_trapezoid(np.cos(theta),s,initial=0)
+            ycal = cumulative_trapezoid(np.sin(theta),s,initial=0)
+            beta = theta[0]
+            theta1= theta-beta
+            #print(f"  beta={beta}")
+            #print(f"  theta1={theta1}")
+            xrot = cumulative_trapezoid(np.cos(theta1),s,initial=0)
+            yrot = cumulative_trapezoid(np.sin(theta1),s,initial=0)
+            plt.plot(xcal, ycal, '-', label='Original')
+            plt.plot(xrot, yrot, '--', label='Rotated')
+            plt.axis('equal')
+            plt.show()"""
+            
             print("\n")
             print(f"  Error_Energy = {(res['Energy'] - PE):+.6f} ({100 * abs((res['Energy'] - PE) / PE):.3f}%)")
             print(f"  Error_Fx     = {(res['Fx'] - Fx):+.6f} ({100 * abs((res['Fx'] - Fx) / Fx):.3f}%)")

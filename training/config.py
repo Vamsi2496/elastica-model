@@ -25,7 +25,7 @@ class Config:
 
     # d-slice: set D_SLICE=None to use full dataset (recommended for weighted sampling)
     D_SLICE     = 0.85
-    D_SLICE_TOL = 0.005
+    D_SLICE_TOL = 0.01
 
     # weighted sampling: equalise training exposure across the d distribution
     WEIGHTED_D_SAMPLING = False
