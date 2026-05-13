@@ -5,7 +5,6 @@ import time
 
 from config import Config
 from dataset import get_loaders
-from loss import ElasticaLoss
 from model import ElasticaEnergyNet
 
 
@@ -16,7 +15,7 @@ def r2(y_true, y_pred):
 
 
 def test():
-    start=time.time()
+    start = time.time()
     device = Config.DEVICE
     print(f"Device: {device}")
     ckpt = torch.load(Config.CKPT_BEST, map_location=device)
@@ -25,45 +24,39 @@ def test():
     model.eval()
     print(f"Loaded epoch {ckpt['epoch']} val_loss={ckpt['val_loss']:.6f}")
     print(f"d-slice: {Config.D_SLICE} ± {Config.D_SLICE_TOL}")
-    print(f"Architecture: MLP  3 -> {' -> '.join(map(str, Config.HIDDEN_LAYERS))} -> 1  (GELU)")
+    print(f"Architecture: MLP  2 -> {' -> '.join(map(str, Config.HIDDEN_LAYERS))} -> 1  (GELU)")
     _, _, test_loader, dataset = get_loaders(Config.HDF5_PATH, compute_stats=False)
-    pred_all, true_auto, true_theta, x_all = [], [], [], []
-    for x, y, arc, theta in test_loader:
+
+    pred_all, true_auto, x_all = [], [], []
+    for x, y in test_loader:
         x_req = x.detach().requires_grad_(True)
         U = model(x_req)
         g = torch.autograd.grad(U.sum(), x_req, create_graph=False)[0]
         x_phys = x.detach().cpu().numpy() * dataset.x_std[None, :] + dataset.x_mean[None, :]
-        d_phys = np.clip(x_phys[:, 2], 1e-8, None)
         scale = dataset.y_std[0] / dataset.x_std
         g_phys = g.detach().cpu().numpy() * scale[None, :]
         U_phys = U.detach().cpu().numpy() * dataset.y_std[0] + dataset.y_mean[0]
         ML_phys = Config.SIGN_M1 * g_phys[:, 0] * (180 / np.pi)
         MR_phys = Config.SIGN_M2 * g_phys[:, 1] * (180 / np.pi)
-        Fx_phys = Config.SIGN_FX * g_phys[:, 2]
-        Fy_phys = (MR_phys - ML_phys) / d_phys
-        pred_all.append(np.stack([U_phys, Fx_phys, Fy_phys, ML_phys, MR_phys], axis=1))
+        pred_all.append(np.stack([U_phys, ML_phys, MR_phys], axis=1))
         true_auto.append(y.detach().cpu().numpy() * dataset.y_std[None, :] + dataset.y_mean[None, :])
         x_all.append(x_phys)
-        theta_phys = theta * dataset.t_std + dataset.t_mean
-        arc_phys = arc * dataset.arc_max
-        Fx_t, Fy_t, ML_t, MR_t, _, _ = ElasticaLoss.derive_from_theta(theta_phys, arc_phys)
-        U_t = ElasticaLoss.energy_from_theta(theta_phys, arc_phys)
-        true_theta.append(torch.stack([U_t, Fx_t, Fy_t, ML_t, MR_t], dim=1).detach().cpu().numpy())
-    pred_all = np.concatenate(pred_all)
+
+    pred_all  = np.concatenate(pred_all)
     true_auto = np.concatenate(true_auto)
-    true_theta = np.concatenate(true_theta)
-    x_all = np.concatenate(x_all)
-    print("=" * 70)
-    print(f"{'Output':<12} {'AUTO R²':>9} {'AUTO RMSE':>12} {'AUTO MaxErr':>12}")
-    print("=" * 70)
-    results = {"AUTO": {}}
+    x_all     = np.concatenate(x_all)
+
+    print("=" * 60)
+    print(f"{'Output':<12} {'R²':>9} {'RMSE':>12} {'MaxErr':>12}")
+    print("=" * 60)
+    results = {}
     for i, name in enumerate(Config.SCALAR_NAMES):
-        r2_a = r2(true_auto[:, i], pred_all[:, i])
-        rmse_a = np.sqrt(np.mean((true_auto[:, i] - pred_all[:, i]) ** 2))
-        maxerr_a = np.max(np.abs(true_auto[:, i] - pred_all[:, i]))
-        print(f"{name:<12} {r2_a:>9.5f} {rmse_a:>12.4e} {maxerr_a:>12.4e}")
-        results["AUTO"][name] = {"R2": float(r2_a), "RMSE": float(rmse_a), "MaxErr": float(maxerr_a)}
-    print("=" * 70)
+        r2_v    = r2(true_auto[:, i], pred_all[:, i])
+        rmse_v  = np.sqrt(np.mean((true_auto[:, i] - pred_all[:, i]) ** 2))
+        maxerr  = np.max(np.abs(true_auto[:, i] - pred_all[:, i]))
+        print(f"{name:<12} {r2_v:>9.5f} {rmse_v:>12.4e} {maxerr:>12.4e}")
+        results[name] = {"R2": float(r2_v), "RMSE": float(rmse_v), "MaxErr": float(maxerr)}
+    print("=" * 60)
     with open("test_results.json", "w") as f:
         json.dump(results, f, indent=2)
     print("Saved → test_results.json")
@@ -74,27 +67,26 @@ def test():
     top_k = 2000
     worst_idx = np.argsort(max_err_per_sample)[-top_k:]
 
-    print(f"\nTop-{top_k} outlier samples (ranked by max error across all outputs):")
-    pad = " " * 36
-    header = f"  {'phi1':>7}  {'phi2':>7}  {'d':>7}  | {'Output':<8} {'True':>10} {'Pred':>10} {'AbsErr':>10}"
+    print(f"\nTop-{top_k} outlier samples (worst 20 shown):")
+    pad = " " * 24
+    header = f"  {'phi1':>7}  {'phi2':>7}  | {'Output':<8} {'True':>10} {'Pred':>10} {'AbsErr':>10}"
     print(header)
     print("  " + "-" * (len(header) - 2))
     for i in worst_idx[-20:][::-1]:
         for j, name in enumerate(Config.SCALAR_NAMES):
-            prefix = f"  {x_all[i,0]:7.3f}  {x_all[i,1]:7.3f}  {x_all[i,2]:7.4f}" if j == 0 else pad
+            prefix = f"  {x_all[i,0]:7.3f}  {x_all[i,1]:7.3f}" if j == 0 else pad
             print(f"{prefix}  | {name:<8} {true_auto[i,j]:10.4f} {pred_all[i,j]:10.4f} {abs_err[i,j]:10.4f}")
         print()
 
     np.savez("outliers.npz",
              phi1=x_all[worst_idx, 0],
              phi2=x_all[worst_idx, 1],
-             d=x_all[worst_idx, 2],
              true=true_auto[worst_idx],
              pred=pred_all[worst_idx],
              abs_err=abs_err[worst_idx],
              output_names=np.array(Config.SCALAR_NAMES))
     print("Outlier data saved → outliers.npz")
-    print(f"total time taken: {time.time()-start} s")
+    print(f"Total time: {time.time() - start:.1f}s")
 
 
 if __name__ == "__main__":

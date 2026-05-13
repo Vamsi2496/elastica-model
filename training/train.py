@@ -13,22 +13,10 @@ from model import ElasticaEnergyNet
 
 warnings.filterwarnings("ignore", message="Detected call of.*lr_scheduler.step.*before.*optimizer.step", category=UserWarning)
 
-# Capture target weights once at import time, before any epoch mutates Config.
 _SCHEDULE_TARGETS = {attr: getattr(Config, attr) for attr, *_ in Config.LOSS_SCHEDULE}
 
 
 def apply_schedule(epoch: int) -> tuple[str, bool]:
-    """Set Config weights according to LOSS_SCHEDULE.
-
-    Returns:
-        (status_tag, new_component_introduced)
-
-        new_component_introduced is True on the exact epoch a component
-        transitions from 0 to non-zero weight.  The caller must reset the
-        LR scheduler's internal best on such epochs so ReduceLROnPlateau
-        does not compare the new multi-component loss against the old
-        energy-only minimum (which would otherwise trigger runaway LR decay).
-    """
     tags = []
     new_component = False
     for attr, intro, ramp, init_val in Config.LOSS_SCHEDULE:
@@ -52,8 +40,8 @@ def apply_schedule(epoch: int) -> tuple[str, bool]:
 def evaluate(model, loader, criterion):
     model.eval()
     total, bd_sum = 0.0, {}
-    for x, y, arc, theta in loader:
-        loss, bd = criterion(model, x, y, arc, theta, need_stiffness=False)
+    for x, y in loader:
+        loss, bd = criterion(model, x, y)
         total += loss.item()
         for k, v in bd.items():
             bd_sum[k] = bd_sum.get(k, 0.0) + float(v)
@@ -63,25 +51,22 @@ def evaluate(model, loader, criterion):
 
 def print_validation_sample(model, val_loader, dataset, sample_idx=0):
     model.eval()
-    x, y, _, _ = next(iter(val_loader))
+    x, y = next(iter(val_loader))
     x_req = x.detach().requires_grad_(True)
     U = model(x_req)
     g = torch.autograd.grad(U.sum(), x_req, create_graph=False)[0]
     x_phys = x.detach().cpu().numpy() * dataset.x_std[None, :] + dataset.x_mean[None, :]
-    d_phys = np.clip(x_phys[:, 2], 1e-8, None)
     scale = dataset.y_std[0] / dataset.x_std
     g_phys = g.detach().cpu().numpy() * scale[None, :]
     U_phys = U.detach().cpu().numpy() * dataset.y_std[0] + dataset.y_mean[0]
     ML_phys = Config.SIGN_M1 * g_phys[:, 0] * (180 / np.pi)
     MR_phys = Config.SIGN_M2 * g_phys[:, 1] * (180 / np.pi)
-    Fx_phys = Config.SIGN_FX * g_phys[:, 2]
-    Fy_phys = (MR_phys - ML_phys) / d_phys
     auto_phys = y.detach().cpu().numpy() * dataset.y_std[None, :] + dataset.y_mean[None, :]
     i = sample_idx
     print("=== Validation sample ===")
-    print(f"input x_phys: {x_phys[i]}")
-    print(f"AUTO truth [Energy,Fx,Fy,ML,MR]: {auto_phys[i]}")
-    print(f"model pred [Energy,Fx,Fy,ML,MR]: {[U_phys[i], Fx_phys[i], Fy_phys[i], ML_phys[i], MR_phys[i]]}")
+    print(f"input (phi1, phi2): {x_phys[i]}")
+    print(f"AUTO truth  [Energy, ML, MR]: {auto_phys[i]}")
+    print(f"model pred  [Energy, ML, MR]: {[float(U_phys[i]), float(ML_phys[i]), float(MR_phys[i])]}")
 
 
 def train():
@@ -90,7 +75,8 @@ def train():
     print(f"Device: {device}")
     d_info = f"d-slice: {Config.D_SLICE}±{Config.D_SLICE_TOL}" if Config.D_SLICE is not None else "full dataset"
     print(f"Data: {d_info}  |  weighted_d={Config.WEIGHTED_D_SAMPLING}")
-    print(f"Architecture: MLP  3 -> {' -> '.join(map(str, Config.HIDDEN_LAYERS))} -> 1  (GELU)")
+    print(f"Architecture: MLP  2 -> {' -> '.join(map(str, Config.HIDDEN_LAYERS))} -> 1  (GELU)")
+    print(f"Outputs: Energy (direct) + M_left, M_right (gradients)")
     if Config.USE_GPU:
         print(f"GPU: {torch.cuda.get_device_name(0)}")
         print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
@@ -102,7 +88,9 @@ def train():
     print(f"Parameters: {model.count_params():,}")
     criterion = ElasticaLoss(dataset)
     optimizer = optim.AdamW(model.parameters(), lr=Config.LR, weight_decay=Config.WEIGHT_DECAY)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=Config.LR_FACTOR, patience=Config.LR_PATIENCE, min_lr=Config.MIN_LR, threshold=Config.LR_THRESHOLD)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode="min", factor=Config.LR_FACTOR,
+        patience=Config.LR_PATIENCE, min_lr=Config.MIN_LR, threshold=Config.LR_THRESHOLD)
     history = {"train": [], "val": [], "breakdown": []}
     best_val = float("inf")
     no_improve_count = 0
@@ -123,13 +111,6 @@ def train():
     for epoch in range(start_epoch, Config.EPOCHS + 1):
         sched_tag, new_component = apply_schedule(epoch)
 
-        # --- LR-scheduler reset on curriculum change ----------------------------
-        # When a new loss component is switched on, the total loss jumps up.
-        # ReduceLROnPlateau would then compare every subsequent epoch against the
-        # old (lower) energy-only best, counting every epoch as "bad" and halving
-        # the LR every patience+1 epochs until MIN_LR is hit.  We prevent this by
-        # resetting the scheduler's internal best and the LR itself to the initial
-        # value so the model gets a fresh learning-rate window for the new task.
         if new_component:
             lr_now = optimizer.param_groups[0]["lr"]
             for pg in optimizer.param_groups:
@@ -138,15 +119,14 @@ def train():
             scheduler.num_bad_epochs = 0
             best_val = float("inf")
             no_improve_count = 0
-            print(f"*** New loss component introduced at epoch {epoch}: "
+            print(f"*** New loss component at epoch {epoch}: "
                   f"LR reset {lr_now:.2e} -> {Config.LR:.2e}, scheduler best reset ***")
-        # ------------------------------------------------------------------------
 
         model.train()
         epoch_loss = 0.0
         t0 = time.time()
-        for step, (x, y, arc, theta) in enumerate(train_loader):
-            loss, bd = criterion(model, x, y, arc, theta, need_stiffness=False)
+        for step, (x, y) in enumerate(train_loader):
+            loss, bd = criterion(model, x, y)
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), Config.GRAD_CLIP)
@@ -171,7 +151,10 @@ def train():
         if val_loss < best_val - Config.MIN_DELTA:
             best_val = val_loss
             no_improve_count = 0
-            torch.save({"epoch": epoch, "model_state": model.state_dict(), "optim_state": optimizer.state_dict(), "val_loss": val_loss, "architecture": Config.HIDDEN_LAYERS}, Config.CKPT_BEST)
+            torch.save({"epoch": epoch, "model_state": model.state_dict(),
+                        "optim_state": optimizer.state_dict(),
+                        "val_loss": val_loss, "architecture": Config.HIDDEN_LAYERS},
+                       Config.CKPT_BEST)
             print(f"✓ Checkpoint saved (val={val_loss:.6f})")
         else:
             no_improve_count += 1
