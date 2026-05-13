@@ -45,7 +45,7 @@ class Config:
     # --- loss weights ---
     W_ENERGY_LABEL = 1.0
     W_SCALAR       = 1.0
-    M_WEIGHT       = 3.0
+    M_WEIGHT       = 30.0
     EI             = 1.0
     
 
