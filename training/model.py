@@ -4,10 +4,12 @@ from config import Config
 
 
 class ElasticaEnergyNet(nn.Module):
-    """Plain MLP energy network: (φ₁, φ₂) → U.
+    """Plain MLP energy network: (phi1, phi2, d) -> U.
 
-    Loads M_left, M_right are derived from ∂U/∂φ₁ and ∂U/∂φ₂.
-    d is excluded as an input so Fx (= -∂U/∂d) is not defined.
+    Loads derived from gradients:
+      Fx     = -dU/dd
+      M_left = -dU/dphi1 * (180/pi)
+      M_right = +dU/dphi2 * (180/pi)
     """
 
     def __init__(self, hidden_layers=None):

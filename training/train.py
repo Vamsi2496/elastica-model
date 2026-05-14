@@ -17,6 +17,11 @@ _SCHEDULE_TARGETS = {attr: getattr(Config, attr) for attr, *_ in Config.LOSS_SCH
 
 
 def apply_schedule(epoch: int) -> tuple[str, bool]:
+    """Apply loss schedule for this epoch.
+
+    Returns:
+        (status_tag, new_component_introduced)
+    """
     tags = []
     new_component = False
     for attr, intro, ramp, init_val in Config.LOSS_SCHEDULE:
@@ -37,11 +42,34 @@ def apply_schedule(epoch: int) -> tuple[str, bool]:
     return tag, new_component
 
 
+def sched_norm_loss(val_bd: dict) -> float:
+    """Loss evaluated at final schedule target weights, not current ramped weights.
+
+    Passed to ReduceLROnPlateau instead of the raw val_loss.
+
+    Why: during a weight ramp the total val_loss rises mechanically even when
+    the model is improving, so the scheduler would halve the LR every
+    LR_PATIENCE epochs for no reason.  Using target weights removes that
+    mechanical increase while keeping genuine plateau detection: if the
+    normalised loss flatlines, the model is truly stuck regardless of the ramp.
+
+    After the ramp completes the target weights equal the live weights, so
+    sched_norm_loss == val_loss and behaviour is identical to before.
+    """
+    e  = val_bd.get("energy",  0.0)
+    fx = val_bd.get("Fx",      0.0)
+    m1 = val_bd.get("M_left",  0.0)
+    m2 = val_bd.get("M_right", 0.0)
+    scalar = (_SCHEDULE_TARGETS.get("FX_WEIGHT", 0.0) * fx
+              + _SCHEDULE_TARGETS.get("M_WEIGHT",  0.0) * (m1 + m2))
+    return _SCHEDULE_TARGETS["W_ENERGY_LABEL"] * e + Config.W_SCALAR * scalar
+
+
 def evaluate(model, loader, criterion):
     model.eval()
     total, bd_sum = 0.0, {}
-    for x, y in loader:
-        loss, bd = criterion(model, x, y)
+    for x, y, arc, theta in loader:
+        loss, bd = criterion(model, x, y, arc, theta, need_stiffness=False)
         total += loss.item()
         for k, v in bd.items():
             bd_sum[k] = bd_sum.get(k, 0.0) + float(v)
@@ -51,22 +79,25 @@ def evaluate(model, loader, criterion):
 
 def print_validation_sample(model, val_loader, dataset, sample_idx=0):
     model.eval()
-    x, y = next(iter(val_loader))
+    x, y, _, _ = next(iter(val_loader))
     x_req = x.detach().requires_grad_(True)
     U = model(x_req)
     g = torch.autograd.grad(U.sum(), x_req, create_graph=False)[0]
-    x_phys = x.detach().cpu().numpy() * dataset.x_std[None, :] + dataset.x_mean[None, :]
-    scale = dataset.y_std[0] / dataset.x_std
-    g_phys = g.detach().cpu().numpy() * scale[None, :]
-    U_phys = U.detach().cpu().numpy() * dataset.y_std[0] + dataset.y_mean[0]
+    x_phys  = x.detach().cpu().numpy() * dataset.x_std[None, :] + dataset.x_mean[None, :]
+    d_phys  = np.clip(x_phys[:, 2], 1e-8, None)
+    scale   = dataset.y_std[0] / dataset.x_std
+    g_phys  = g.detach().cpu().numpy() * scale[None, :]
+    U_phys  = U.detach().cpu().numpy() * dataset.y_std[0] + dataset.y_mean[0]
     ML_phys = Config.SIGN_M1 * g_phys[:, 0] * (180 / np.pi)
     MR_phys = Config.SIGN_M2 * g_phys[:, 1] * (180 / np.pi)
+    Fx_phys = Config.SIGN_FX * g_phys[:, 2]
+    Fy_phys = (MR_phys - ML_phys) / d_phys
     auto_phys = y.detach().cpu().numpy() * dataset.y_std[None, :] + dataset.y_mean[None, :]
     i = sample_idx
     print("=== Validation sample ===")
-    print(f"input (phi1, phi2): {x_phys[i]}")
-    print(f"AUTO truth  [Energy, ML, MR]: {auto_phys[i]}")
-    print(f"model pred  [Energy, ML, MR]: {[float(U_phys[i]), float(ML_phys[i]), float(MR_phys[i])]}")
+    print(f"input (phi1, phi2, d): {x_phys[i]}")
+    print(f"AUTO truth  [E, Fx, Fy, ML, MR]: {list(auto_phys[i])}")
+    print(f"model pred  [E, Fx, Fy, ML, MR]: {[float(U_phys[i]), float(Fx_phys[i]), float(Fy_phys[i]), float(ML_phys[i]), float(MR_phys[i])]}")
 
 
 def train():
@@ -75,15 +106,15 @@ def train():
     print(f"Device: {device}")
     d_info = f"d-slice: {Config.D_SLICE}±{Config.D_SLICE_TOL}" if Config.D_SLICE is not None else "full dataset"
     print(f"Data: {d_info}  |  weighted_d={Config.WEIGHTED_D_SAMPLING}")
-    print(f"Architecture: MLP  2 -> {' -> '.join(map(str, Config.HIDDEN_LAYERS))} -> 1  (GELU)")
-    print(f"Outputs: Energy (direct) + M_left, M_right (gradients)")
+    print(f"Architecture: MLP  3 -> {' -> '.join(map(str, Config.HIDDEN_LAYERS))} -> 1  (GELU)")
+    print(f"NNP schedule: W_ENERGY 50->5 (ep1-50), FX 0->30 + M 0->50 (ep50-80)")
     if Config.USE_GPU:
         print(f"GPU: {torch.cuda.get_device_name(0)}")
         print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
         torch.backends.cudnn.benchmark = True
     train_loader, val_loader, _, dataset = get_loaders(Config.HDF5_PATH)
     print(f"Train batches: {len(train_loader)}")
-    print(f"Val batches: {len(val_loader)}")
+    print(f"Val batches:   {len(val_loader)}")
     model = ElasticaEnergyNet().to(device)
     print(f"Parameters: {model.count_params():,}")
     criterion = ElasticaLoss(dataset)
@@ -125,8 +156,8 @@ def train():
         model.train()
         epoch_loss = 0.0
         t0 = time.time()
-        for step, (x, y) in enumerate(train_loader):
-            loss, bd = criterion(model, x, y)
+        for step, (x, y, arc, theta) in enumerate(train_loader):
+            loss, bd = criterion(model, x, y, arc, theta, need_stiffness=False)
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), Config.GRAD_CLIP)
@@ -134,9 +165,9 @@ def train():
             epoch_loss += loss.item()
             if step % Config.LOG_INTERVAL == 0:
                 lr = optimizer.param_groups[0]["lr"]
-                print(f"Ep {epoch:3d} | step {step:4d} | total={bd['total']:.5f} | energy={bd['energy']:.5f} | scalar={bd['scalar']:.5f} | lr={lr:.2e}")
+                print(f"Ep {epoch:3d} | step {step:4d} | total={bd['total']:.5f} | energy={bd['energy']:.5f} | Fx={bd['Fx']:.5f} | scalar={bd['scalar']:.5f} | lr={lr:.2e}")
         val_loss, val_bd = evaluate(model, val_loader, criterion)
-        scheduler.step(val_loss)
+        scheduler.step(sched_norm_loss(val_bd))
         print_validation_sample(model, val_loader, dataset, sample_idx=0)
         avg_train = epoch_loss / len(train_loader)
         elapsed = time.time() - t0
@@ -155,7 +186,7 @@ def train():
                         "optim_state": optimizer.state_dict(),
                         "val_loss": val_loss, "architecture": Config.HIDDEN_LAYERS},
                        Config.CKPT_BEST)
-            print(f"✓ Checkpoint saved (val={val_loss:.6f})")
+            print(f"Checkpoint saved (val={val_loss:.6f})")
         else:
             no_improve_count += 1
             print(f"- No improvement for {no_improve_count}/{Config.PATIENCE} epoch(s) (best val={best_val:.6f})")
@@ -172,7 +203,7 @@ def train():
             "history": history,
         }, Config.CKPT_LATEST)
         if no_improve_count >= Config.PATIENCE:
-            print(f"⏹ Early stopping at epoch {epoch}")
+            print(f"Early stopping at epoch {epoch}")
             break
     print(f"Training complete. Best val loss: {best_val:.6f}")
 
