@@ -54,7 +54,7 @@ class Config:
     M_WEIGHT_INIT = 1.0
 
     BATCH_SIZE = 8192
-    EPOCHS = 1200
+    EPOCHS = 2000
     LR = 1e-3
     WEIGHT_DECAY = 1e-5
     GRAD_CLIP = 1.0
