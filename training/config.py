@@ -47,6 +47,8 @@ class Config:
     EI = 1.0
     W_ENERGY_THETA = 0.0
     LAMBDA_STIFF = 0.0
+    
+    LOSS_SCHEDULE = []
 
     # --- curriculum: ramp from _INIT → target over CURRICULUM_EPOCHS ---
     CURRICULUM_EPOCHS = 20
@@ -54,17 +56,17 @@ class Config:
     M_WEIGHT_INIT = 1.0
 
     BATCH_SIZE = 8192
-    EPOCHS = 2000
+    EPOCHS = 3000
     LR = 1e-3
     WEIGHT_DECAY = 1e-5
     GRAD_CLIP = 1.0
     LOG_INTERVAL = 200
     PATIENCE = 1500
-    MIN_DELTA = 1e-4
+    MIN_DELTA = 1e-6
     LR_FACTOR = 0.85
     LR_PATIENCE = 40
     MIN_LR = 1e-6
-    LR_THRESHOLD = 1e-4
+    LR_THRESHOLD = 1e-6
 
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     USE_GPU = torch.cuda.is_available()
