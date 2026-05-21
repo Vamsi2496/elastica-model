@@ -28,7 +28,7 @@ from rtree import index as rtree_index
 N_POINTS      = 240000
 N_WORKERS     = 6
 
-EQ_DIR_BASE   = r"C:\Users\sanch\Desktop\Restart solution"
+EQ_DIR_BASE   = os.getcwd()
 MESH_FILE     = "final_mesh.off"
 HDF5_FILE     = "auto_data.h5"
 RTREE_BASE    = "auto_rtree_index"
